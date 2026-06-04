@@ -48,6 +48,23 @@ pytest -q
 Смени комита/тага в `requirements.txt` (`...@<нов-комит>`), преинсталирай и
 тествай. UX-ът никога не редактира енджина — само сменя на коя негова версия сочи.
 
+## Деплой на Railway
+
+UX-ът е готов за Railway (Nixpacks). Стартовата команда е в `Procfile` и слуша
+на `0.0.0.0:$PORT`, който Railway подава автоматично.
+
+1. В Railway: **New Project → Deploy from GitHub repo** → избери
+   `puloxtor/cosmetic-pif-ux` (бранч `claude/gallant-archimedes-jNMzz`).
+2. Railway открива Python по `requirements.txt`, инсталира всичко (енджинът се
+   клонира от **публичното** `cosmetic-pif-poc` — не трябват креденшъли) и пуска
+   `web` процеса от `Procfile`.
+3. (По избор) За AI-зрението: във **Variables** добави `ANTHROPIC_API_KEY`.
+   Без него цифровите PDF-и пак се четат; само снимани/сканирани документи спират.
+4. **Settings → Networking → Generate Domain**, за да получиш публичен URL.
+
+> Смяна на версията на енджина = смени комита в `requirements.txt` и Railway
+> ще пресъбере при следващия push.
+
 ## Офлайн HTMX (по избор)
 
 UX-ът зарежда HTMX от CDN. За напълно офлайн употреба свали го локално и смени
