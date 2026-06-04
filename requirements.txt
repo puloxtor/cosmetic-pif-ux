@@ -1,0 +1,12 @@
+# Енджинът се ПИНОВА към конкретен комит на cosmetic-pif-poc (единствен източник
+# на истина). UX-ът само го вика; не може да го променя.
+pif-engine[extraction] @ git+https://github.com/puloxtor/cosmetic-pif-poc@e3273e91805537d11c09a69410dc178890c4c461
+
+fastapi>=0.110
+uvicorn[standard]>=0.27
+jinja2>=3.1
+python-multipart>=0.0.9
+
+# само за тестове:
+httpx>=0.27
+pytest>=8.0

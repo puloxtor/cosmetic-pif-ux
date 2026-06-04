@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PIF / CPSR — таблица + INCI</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- HTMX от CDN. За напълно офлайн употреба: свали го в app/static/htmx.min.js
+       и смени src на "/static/htmx.min.js" (виж README). -->
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Козметичен PIF / CPSR</h1>
+    <span class="badge">енджин pif-engine v{{ engine_version }}</span>
+  </header>
+
+  <main>
+    <section class="col">
+      <h2>1 · Формула</h2>
+      <p class="hint">Въведи суровините и дозите им (% в крайния продукт). За всяка
+      суровина — композишън стейтмънта (точен %, диапазон <code>[lo, hi]</code> →
+      взима горната граница, или <code>remainder: true</code>). Ароматните —
+      с алергени и техния % в парфюма.</p>
+
+      <form hx-post="/compute" hx-target="#results" hx-indicator="#spin">
+        <textarea name="formula" spellcheck="false" rows="26">{{ sample }}</textarea>
+        <label class="inline"><input type="checkbox" name="cpsr" value="1"> добави и пълен CPSR</label>
+        <button type="submit">Изчисли таблица + INCI</button>
+        <span id="spin" class="htmx-indicator">…смятам</span>
+      </form>
+
+      <h2>2 · Качи документ (по избор)</h2>
+      <p class="hint">Извлича <em>чернова</em> композиция/алергени от доставчиков
+      документ. Цифров PDF → детерминистично; снимка/сканиран → AI-зрение
+      (нужен <code>ANTHROPIC_API_KEY</code>). <strong>Провери всяко число</strong>
+      и копирай в полето горе.</p>
+      <form hx-post="/extract" hx-target="#draft" hx-encoding="multipart/form-data" hx-indicator="#spin2">
+        <input type="file" name="file" required>
+        <div class="row">
+          <label>тип
+            <select name="type">
+              <option value="auto">auto</option>
+              <option value="composition">composition</option>
+              <option value="fragrance">fragrance</option>
+              <option value="formula">formula (рецепта)</option>
+            </select>
+          </label>
+          <label>OCR
+            <select name="ocr">
+              <option value="auto">auto</option>
+              <option value="force">force (AI-зрение)</option>
+              <option value="never">never</option>
+            </select>
+          </label>
+          <button type="submit">Извлечи чернова</button>
+          <span id="spin2" class="htmx-indicator">…чета</span>
+        </div>
+      </form>
+      <div id="draft"></div>
+    </section>
+
+    <section class="col">
+      <h2>Резултат</h2>
+      <div id="results"><p class="muted">Натисни „Изчисли" вляво.</p></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>⚠️ Подготвя, не замества квалифициран оценител (Член 10). Числата от
+    AI-извличане са чернова за проверка.</p>
+  </footer>
+</body>
+</html>

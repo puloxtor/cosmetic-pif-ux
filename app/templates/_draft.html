@@ -1,0 +1,9 @@
+<div class="draft">
+  {% if error %}
+    <p class="err">Грешка при извличане на „{{ filename }}": {{ error }}</p>
+  {% else %}
+    <p class="hint">ЧЕРНОВА от „{{ filename }}" — <strong>провери всяко число</strong>,
+    после копирай нужните редове в полето с формулата.</p>
+    <pre class="draftyaml">{{ draft }}</pre>
+  {% endif %}
+</div>

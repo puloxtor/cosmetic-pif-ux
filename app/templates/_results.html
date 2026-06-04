@@ -1,0 +1,32 @@
+<div class="result">
+  <h3>{{ r.name }} <span class="badge">{{ r.product_type }}</span></h3>
+
+  {% if r.warnings %}
+  <div class="alarms">
+    <strong>⚠️ Аларми / бележки</strong>
+    <ul>{% for w in r.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <h4>Разбивка на състава (сумирано по INCI)</h4>
+  <table>
+    <thead><tr><th>INCI</th><th class="num">% w/w</th></tr></thead>
+    <tbody>
+      {% for row in r.table %}
+      <tr><td>{{ row.inci }}</td><td class="num">{{ "%.4f"|format(row.pct) }}</td></tr>
+      {% endfor %}
+      <tr class="total"><td>СУМА</td>
+        <td class="num">{{ "%.4f"|format(r.total) }}{% if not r.sum_ok %} ⚠️{% else %} ✅{% endif %}</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Алергени за деклариране ({{ r.declared|length }})</h4>
+  <p>{% if r.declared %}{{ r.declared|join(", ") }}{% else %}<span class="muted">няма</span>{% endif %}</p>
+
+  <h4>Генериран INCI (Член 19)</h4>
+  <pre class="inci">{{ r.inci|join(", ") }}</pre>
+
+  {% if r.cpsr %}
+  <details><summary>Пълен CPSR доклад</summary><pre class="cpsr">{{ r.cpsr }}</pre></details>
+  {% endif %}
+</div>
