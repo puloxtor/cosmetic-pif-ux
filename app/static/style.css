@@ -157,6 +157,25 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .cpsr-block { margin-top:var(--s4); }
 .cpsr-block summary { cursor:pointer; font-weight:600; }
 
+/* провенанс печат върху резултата (Член 10) */
+.draft-stamp { background:#fff6e6; border:1px solid var(--warn-line); border-left:4px solid var(--warn);
+  border-radius:var(--radius-sm); padding:.55rem .75rem; margin:0 0 var(--s3); font-size:.82rem; color:#4a3a1c; }
+.draft-stamp strong { color:var(--warn); }
+
+/* блокиращо потвърждение на алармите преди разкриване на изходите */
+.gate-note { background:var(--warn-soft); border:1px solid var(--warn-line); color:#4a3a1c;
+  border-radius:var(--radius-sm); padding:var(--s3) var(--s4); margin:var(--s3) 0; font-size:.88rem;
+  display:flex; flex-direction:column; align-items:flex-start; gap:.5rem; }
+.gate-note button { align-self:flex-start; }
+
+/* непроверен (AI) ред — карантина, докато човек не потвърди */
+.ingredient.unverified { border-color:var(--warn-line); background:#fffaf0; }
+.unverified-badge { flex-basis:100%; display:flex; align-items:center; justify-content:space-between;
+  gap:.5rem; background:var(--warn-soft); border:1px solid var(--warn-line); border-radius:var(--radius-sm);
+  padding:.3rem .5rem; margin-bottom:.4rem; }
+.uv-tag { font-size:.76rem; font-weight:700; color:var(--warn); display:inline-flex; align-items:center; gap:.35rem; }
+.yaml-ack { margin-top:.5rem; font-size:.82rem; }
+
 /* alarms / errors */
 .alarms { background:var(--warn-soft); border:1px solid var(--warn-line); color:#4a3a1c;
   border-radius:var(--radius-sm); padding:var(--s3) var(--s4); margin:var(--s3) 0; font-size:.88rem; }

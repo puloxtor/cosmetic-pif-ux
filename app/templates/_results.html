@@ -1,5 +1,13 @@
 <div class="result">
+  <div class="draft-stamp" role="note">
+    <strong>ЧЕРНОВА — не е финален документ.</strong>
+    Изисква проверка и подпис от квалифициран оценител
+    (Член 10, Регламент (ЕО) № 1223/2009).
+  </div>
+
   <h3>{{ r.name }} <span class="badge">{{ r.product_type }}</span></h3>
+
+  {% set alarm_count = (r.warnings|length) + (0 if r.sum_ok else 1) %}
 
   {% if r.warnings %}
   <div class="alarms" role="alert">
@@ -67,6 +75,16 @@
     (0,001% за остава-върху / 0,01% за отмива-се).</p>
   </details>
 
+  {% if alarm_count %}
+  <div class="gate-note" role="alert">
+    <strong>Изходните данни (INCI и CPSR) са скрити.</strong>
+    Има {{ alarm_count }} аларм(и) по-горе — потвърди, че си ги прегледал(а), за да продължиш.
+    <button type="button" class="btn-primary small" data-ack-alarms>
+      Потвърждавам {{ alarm_count }} аларм(и) и продължавам
+    </button>
+  </div>
+  {% endif %}
+  <div class="gated"{% if alarm_count %} hidden{% endif %}>
   <h4>Генериран INCI (Член 19)</h4>
   <div class="inci-head">
     <button type="button" class="btn-ghost small" data-copy="#inci-text"
@@ -84,4 +102,5 @@
   {% if r.cpsr %}
   <details class="cpsr-block"><summary>Пълен CPSR доклад</summary><pre class="cpsr">{{ r.cpsr }}</pre></details>
   {% endif %}
+  </div>
 </div>

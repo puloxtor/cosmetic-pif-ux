@@ -6,6 +6,7 @@ FastAPI + HTMX UX за козметичния PIF/CPSR енджин.
 с разбивката + генерирания INCI. Цялата сметка идва от енджина (pif_engine).
 """
 from __future__ import annotations
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
@@ -17,6 +18,12 @@ from . import engine
 
 BASE = Path(__file__).parent
 app = FastAPI(title="Cosmetic PIF/CPSR UX")
+
+# Валидиране на качените документи (UX/устойчивост — не е енджин логика).
+MAX_FILES = 20
+MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB на файл
+ALLOWED_EXT = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_CT = {"application/pdf", "image/png", "image/jpeg", "image/webp"}
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 
@@ -68,12 +75,25 @@ async def extract(request: Request,
 
     Всеки файл се обработва отделно: грешка в един не спира останалите.
     """
+    if len(files) > MAX_FILES:
+        return templates.TemplateResponse(request, "_draft.html", {"documents": [
+            {"filename": f"{len(files)} файла", "rms": [], "notes": [],
+             "error": f"Прекалено много файлове наведнъж (макс. {MAX_FILES})."}]})
+
     documents = []
     for f in files:
         name = f.filename or "document"
         doc = {"filename": name, "rms": [], "notes": [], "error": None}
         try:
-            data = await f.read()
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in ALLOWED_EXT:
+                raise ValueError(
+                    f"Неподдържан тип файл „{ext or '?'}“. Разреши: PDF, PNG, JPG, WEBP.")
+            if f.content_type and f.content_type not in ALLOWED_CT:
+                raise ValueError(f"Неочакван тип съдържание „{f.content_type}“.")
+            data = await f.read(MAX_FILE_BYTES + 1)  # ограничено четене
+            if len(data) > MAX_FILE_BYTES:
+                raise ValueError("Файлът е твърде голям (макс. 10 MB).")
             rms, notes = engine.extract_structured(data, name, type, ocr)
             doc["rms"] = rms
             doc["notes"] = notes

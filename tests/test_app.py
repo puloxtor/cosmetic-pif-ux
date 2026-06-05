@@ -46,6 +46,53 @@ def test_results_have_copy_button_and_sum_status():
     assert "Сборът е 100%" in r.text  # 100% доза → пълен състав
 
 
+def test_results_carry_draft_provenance_stamp():
+    """Всеки изход носи ЧЕРНОВА/Член 10 печат (провенанс за подписващия оценител)."""
+    r = client.post("/compute", data={"formula": MINI})
+    assert "ЧЕРНОВА" in r.text
+    assert "Член 10" in r.text
+
+
+def test_clean_compute_does_not_gate_outputs():
+    """Без аларми изходите се показват веднага — без бутон за потвърждение."""
+    r = client.post("/compute", data={"formula": MINI})
+    assert "data-ack-alarms" not in r.text
+    assert 'class="gated" hidden' not in r.text
+    assert "Генериран INCI" in r.text
+
+
+def test_alarms_gate_outputs_until_acknowledged():
+    """Аларма (сума≠100%) скрива INCI/CPSR зад задължително потвърждение."""
+    bad = MINI.replace("dose_pct: 100", "dose_pct: 50")
+    r = client.post("/compute", data={"formula": bad})
+    assert "data-ack-alarms" in r.text             # блокиращ бутон за потвърждение
+    assert 'class="gated" hidden' in r.text         # изходите са скрити
+    # INCI секцията е вътре в скритата зона
+    assert r.text.index('class="gated"') < r.text.index("Генериран INCI")
+
+
+def test_extract_rejects_disallowed_extension():
+    r = client.post("/extract", data={"type": "auto", "ocr": "never"},
+                    files={"files": ("evil.exe", b"MZ", "application/octet-stream")})
+    assert r.status_code == 200
+    assert "Неподдържан тип файл" in r.text
+
+
+def test_extract_rejects_oversize_file():
+    big = b"%PDF" + b"x" * (10 * 1024 * 1024 + 16)
+    r = client.post("/extract", data={"type": "auto", "ocr": "never"},
+                    files={"files": ("big.pdf", big, "application/pdf")})
+    assert r.status_code == 200
+    assert "твърде голям" in r.text
+
+
+def test_extract_rejects_too_many_files():
+    files = [("files", (f"f{i}.pdf", b"%PDF", "application/pdf")) for i in range(21)]
+    r = client.post("/extract", data={"type": "auto", "ocr": "never"}, files=files)
+    assert r.status_code == 200
+    assert "много файлове" in r.text
+
+
 def test_compute_sample_default_works():
     r = client.post("/compute", data={"formula": SAMPLE_FORMULA})
     assert r.status_code == 200

@@ -151,6 +151,26 @@
     return card;
   }
 
+  // --- карантина на извлечени стойности (Член 10: човек проверява всяко число) ---
+  // Ред, дошъл от извличане, е „непроверен“ и блокира изчислението, докато
+  // ползвателят не натисне „Проверих“ ИЛИ не редактира някое поле в реда.
+  function markUnverified(card) {
+    if (!card || card.dataset.unverified) return;
+    card.dataset.unverified = "1";
+    card.classList.add("unverified");
+    var badge = el("div", { class: "unverified-badge" },
+      '<span class="uv-tag">AI чернова — провери всяко число</span>');
+    badge.appendChild(el("button", { type: "button", class: "btn-ghost small uv-ok" }, "Проверих"));
+    card.insertBefore(badge, card.firstChild);
+  }
+  function clearUnverified(card) {
+    if (!card || !card.dataset.unverified) return;
+    delete card.dataset.unverified;
+    card.classList.remove("unverified");
+    var b = card.querySelector(".unverified-badge");
+    if (b) b.remove();
+  }
+
   // --- сериализация форма → YAML ---
   function compLine(c) {
     var parts = ["inci_name: " + yq(c.inci_name)];
@@ -342,6 +362,7 @@
   }
   function finishAttach(card, model) {
     var fresh = replaceCard(card, model);
+    markUnverified(fresh);   // данните идват от документ → искат проверка
     toast("Допълнена съставка: " + (model.name || ""));
     fresh.scrollIntoView({ behavior: "smooth", block: "center" });
     focusFirstEmptyDose();
@@ -430,7 +451,7 @@
         return "attach";
       }
     }
-    appendIngredient(normalizeRm(rm));     // нова съставка (или резерв, ако редът липсва)
+    markUnverified(appendIngredient(normalizeRm(rm)));  // нова съставка (или резерв)
     return "new";
   }
 
@@ -447,10 +468,13 @@
     });
   });
 
-  // махане на „invalid“ щом потребителят започне да пише доза
+  // махане на „invalid“ щом потребителят започне да пише доза;
+  // редакция на поле в непроверен ред = човек го е прегледал → сваляме картантината
   document.body.addEventListener("input", function (e) {
     if (e.target && e.target.classList && e.target.classList.contains("ing-dose"))
       e.target.classList.remove("invalid");
+    var uv = e.target && e.target.closest ? e.target.closest(".ingredient[data-unverified]") : null;
+    if (uv) clearUnverified(uv);
   });
 
   // „Към“ селектите се опресняват при отваряне, за да отразяват текущите редове
@@ -460,6 +484,19 @@
 
   // делегиране на бутоните „Добави“ / „Добави всички“ (вмъкнати чрез fetch)
   document.body.addEventListener("click", function (e) {
+    // „Проверих“ → сваля карантината от реда
+    var uvok = e.target.closest ? e.target.closest(".uv-ok") : null;
+    if (uvok) { clearUnverified(uvok.closest(".ingredient")); return; }
+
+    // „Потвърждавам N аларми“ → разкрива скритите изходи (INCI, CPSR)
+    var ack = e.target.closest ? e.target.closest("[data-ack-alarms]") : null;
+    if (ack) {
+      var res = ack.closest(".result");
+      if (res) { var g = res.querySelector(".gated"); if (g) g.hidden = false; }
+      var note = ack.closest(".gate-note"); if (note) note.hidden = true;
+      return;
+    }
+
     var all = e.target.closest ? e.target.closest("[data-add-all]") : null;
     if (all) {
       var docAll = all.closest(".doc-card"), rmsAll = [];
@@ -585,13 +622,32 @@
   document.body.addEventListener("htmx:configRequest", function (e) {
     if (!(e.detail.elt && e.detail.elt.id === "formula-form")) return;
     var adv = document.querySelector("#formula-form .advanced");
-    if (adv && adv.open) return;  // разширен режим → използва се ръчният YAML
+    if (adv && adv.open) {
+      // разширен режим → праща се ръчният YAML, но иска изрично потвърждение,
+      // че е прегледан (свободният текст не може да се провери ред по ред).
+      var ackY = document.getElementById("yaml-ack");
+      if (!ackY || !ackY.checked) {
+        e.preventDefault();
+        toast("Отбележи „Прегледах този YAML ред по ред“ преди изчисление");
+        if (ackY) ackY.focus();
+      }
+      return;
+    }
 
     var prob = firstDoseProblem();
     if (prob) {
       e.preventDefault();
       if (prob.kind === "empty") toast("Добави поне една съставка");
       else { toast("Въведи доза за всяка съставка"); if (prob.el) prob.el.focus(); }
+      return;
+    }
+    // карантина: нито една непроверена (AI) стойност не минава към изчисление
+    var unv = document.querySelector('#ingredients .ingredient[data-unverified]');
+    if (unv) {
+      e.preventDefault();
+      toast("Потвърди извлечените стойности („Проверих“) или ги редактирай");
+      unv.scrollIntoView({ behavior: "smooth", block: "center" });
+      var ub = unv.querySelector(".uv-ok"); if (ub) ub.focus();
       return;
     }
     var y = buildYaml();
