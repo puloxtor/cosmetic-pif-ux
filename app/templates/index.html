@@ -77,14 +77,15 @@
         </details>
       </form>
 
-      <h2><span class="step">2</span> Качи документ <span class="optional">(по избор)</span></h2>
-      <p class="hint">Извлича <em>чернова</em> от доставчиков документ. Цифров PDF
-      се чете директно; снимка/сканиран минава през AI-зрение и иска
-      <code>ANTHROPIC_API_KEY</code>. <strong>Провери всяко число</strong> и го
-      пренеси в съставките горе.</p>
+      <h2><span class="step">2</span> Качи документи <span class="optional">(по избор)</span></h2>
+      <p class="hint">Качи <strong>един или няколко</strong> доставчикови документа
+      (състав, сертификат за алергени или цяла рецепта). Цифров PDF се чете
+      директно; снимка/сканиран минава през AI-зрение и иска
+      <code>ANTHROPIC_API_KEY</code>. След това добавяш съставките във формулата
+      с едно кликане — <strong>провери всяко число</strong>.</p>
       <form hx-post="/extract" hx-target="#draft" hx-encoding="multipart/form-data" hx-indicator="#spin2">
-        <label class="field">Файл
-          <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.webp" required>
+        <label class="field">Файлове
+          <input type="file" name="files" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple required>
         </label>
         <div class="row">
           <label class="field">Вид документ

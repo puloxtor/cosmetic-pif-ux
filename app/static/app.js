@@ -1,6 +1,7 @@
-/* Форма → YAML за енджина + дребни UX подобрения.
+/* Форма → YAML за енджина + извличане от документи + дребни UX подобрения.
    Формата е само удобство за въвеждане: тя генерира точно онзи YAML, който
-   енджинът вече приема, така че бекендът и детерминизмът остават непокътнати. */
+   енджинът вече приема, така че бекендът и детерминизмът остават непокътнати.
+   Числата от извличане са ПРЕДЛОЖЕНИЕ — проверяват се от човек. */
 (function () {
   "use strict";
 
@@ -20,6 +21,47 @@
     if (html != null) n.innerHTML = html;
     return n;
   }
+  function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
+  function escHtml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function yq(s) { return '"' + String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'; }
+  function num(s, dflt) { var v = parseFloat(s); return isNaN(v) ? (dflt == null ? 0 : dflt) : v; }
+  function isNum(s) { return s !== "" && s != null && !isNaN(parseFloat(s)) && isFinite(s); }
+
+  // --- мапване: чернова суровина от енджина → модел за реда във формата ---
+  function isSimpleSingle(comp) {
+    if (!comp || comp.length !== 1) return false;
+    var c = comp[0];
+    return c.range == null && c.at_most == null && !c.remainder &&
+      (c.pct == null || Number(c.pct) === 100);
+  }
+  function normalizeRm(rm) {
+    var dose = isNum(rm.dose_pct) ? String(rm.dose_pct) : "";
+    if (rm.is_fragrance) {
+      return {
+        name: rm.name || "", dose: dose, fragrance: true, inci: "",
+        allergens: (rm.allergens || []).map(function (a) {
+          return { name: a.name || "", pct: isNum(a.pct_in_fragrance) ? String(a.pct_in_fragrance) : "" };
+        }),
+        composition: null
+      };
+    }
+    var comp = rm.composition || [];
+    if (isSimpleSingle(comp)) {
+      return { name: rm.name || "", dose: dose, fragrance: false,
+        inci: comp[0] ? (comp[0].inci_name || "") : "", allergens: [], composition: null };
+    }
+    // Сложен/многосъставен състав → запазваме точно (нужно за INCI + таблицата).
+    return { name: rm.name || "", dose: dose, fragrance: false, inci: "",
+      allergens: [], composition: comp };
+  }
+
+  function amountLabel(c) {
+    if (c.remainder) return "остатък";
+    if (c.range) return c.range[0] + "–" + c.range[1] + "%";
+    if (c.at_most != null) return "до " + c.at_most + "%";
+    if (c.pct != null) return c.pct + "%";
+    return "?";
+  }
 
   function allergenRow(a) {
     var row = el("div", { class: "allergen-row", role: "listitem" });
@@ -34,55 +76,91 @@
   }
 
   function ingredientCard(data) {
-    data = data || { name: "", dose: "", inci: "", fragrance: false, allergens: [] };
+    data = data || { name: "", dose: "", inci: "", fragrance: false, allergens: [], composition: null };
+    var rich = !!(data.composition && data.composition.length);
     var card = el("div", { class: "ingredient", role: "listitem" });
+    if (rich) card._composition = data.composition;
 
     card.appendChild(el("label", { class: "field grow" }, 'Съставка<input type="text" class="ing-name" value="' +
       escAttr(data.name) + '" placeholder="напр. Sweet Almond Oil" autocomplete="off">'));
-    card.appendChild(el("label", { class: "field narrow" }, 'Доза %<input type="number" class="ing-dose" step="0.01" min="0" inputmode="decimal" value="' +
+
+    var doseEmpty = !isNum(data.dose);
+    card.appendChild(el("label", { class: "field narrow" }, 'Доза %<input type="number" class="ing-dose' +
+      (doseEmpty && (data.name) ? " invalid" : "") + '" step="0.01" min="0" inputmode="decimal" value="' +
       escAttr(data.dose) + '">'));
 
+    // Прост едно-INCI вход (за ръчни и едносъставни извлечени суровини).
     var inciLabel = el("label", { class: "field grow ing-inci-wrap" }, 'INCI име<input type="text" class="ing-inci" value="' +
       escAttr(data.inci) + '" placeholder="напр. Prunus Amygdalus Dulcis Oil" autocomplete="off">');
     card.appendChild(inciLabel);
+
+    // Запазен състав от даташийта (много INCI / диапазони) — без загуба на данни.
+    if (rich) {
+      inciLabel.style.display = "none";
+      var comp = data.composition;
+      var wrap = el("div", { class: "field grow comp-wrap" });
+      if (comp.length > 1) {
+        var opts = comp.map(function (c, i) {
+          return '<option value="' + i + '">' + escHtml(c.inci_name) + '</option>';
+        }).join("");
+        wrap.appendChild(el("label", { class: "field" }, "Основен INCI" +
+          '<select class="ing-primary">' + opts + '</select>'));
+      }
+      var sum = comp.map(function (c) { return escHtml(c.inci_name) + " (" + escHtml(amountLabel(c)) + ")"; }).join(", ");
+      wrap.appendChild(el("p", { class: "comp-summary" }, "от даташийта: " + sum));
+      card.appendChild(wrap);
+    }
 
     var del = el("button", { type: "button", class: "icon-btn row-del", "aria-label": "Премахни съставката" }, SVG_TRASH);
     del.addEventListener("click", function () { card.remove(); });
     card.appendChild(del);
 
-    // Аромат-секция (прогресивно разкриване).
-    var fragWrap = el("div", { class: "frag-wrap" });
-    var togId = "frag-" + Math.random().toString(36).slice(2, 8);
-    var tog = el("label", { class: "inline frag-toggle" },
-      '<input type="checkbox" class="ing-frag" id="' + togId + '"' + (data.fragrance ? " checked" : "") +
-      '> Това е аромат / парфюм');
-    fragWrap.appendChild(tog);
+    // Аромат-секция (прогресивно разкриване) — само за не-богати редове.
+    if (!rich) {
+      var fragWrap = el("div", { class: "frag-wrap" });
+      var tog = el("label", { class: "inline frag-toggle" },
+        '<input type="checkbox" class="ing-frag"' + (data.fragrance ? " checked" : "") +
+        '> Това е аромат / парфюм');
+      fragWrap.appendChild(tog);
+      var allergens = el("div", { class: "allergens", role: "list" });
+      var addAl = el("button", { type: "button", class: "btn-ghost small" }, "+ Добави алерген");
+      addAl.addEventListener("click", function () { allergens.appendChild(allergenRow()); });
+      var alBlock = el("div", { class: "allergen-block" });
+      alBlock.appendChild(el("p", { class: "field-hint" }, "Алергени по Приложение III и техния % в самия аромат."));
+      alBlock.appendChild(allergens);
+      alBlock.appendChild(addAl);
+      fragWrap.appendChild(alBlock);
+      card.appendChild(fragWrap);
 
-    var allergens = el("div", { class: "allergens", role: "list" });
-    var addAl = el("button", { type: "button", class: "btn-ghost small" }, "+ Добави алерген");
-    addAl.addEventListener("click", function () { allergens.appendChild(allergenRow()); });
-    var alBlock = el("div", { class: "allergen-block" });
-    alBlock.appendChild(el("p", { class: "field-hint" }, "Алергени по Приложение III и техния % в самия аромат."));
-    alBlock.appendChild(allergens);
-    alBlock.appendChild(addAl);
-    fragWrap.appendChild(alBlock);
-    card.appendChild(fragWrap);
-
-    function syncFrag() {
-      var on = tog.querySelector("input").checked;
-      card.classList.toggle("is-fragrance", on);
+      var togInput = tog.querySelector("input");
+      function syncFrag() { card.classList.toggle("is-fragrance", togInput.checked); }
+      togInput.addEventListener("change", syncFrag);
+      (data.allergens || []).forEach(function (a) { allergens.appendChild(allergenRow(a)); });
+      if (data.fragrance && (!data.allergens || !data.allergens.length)) allergens.appendChild(allergenRow());
+      syncFrag();
     }
-    tog.querySelector("input").addEventListener("change", syncFrag);
-    (data.allergens || []).forEach(function (a) { allergens.appendChild(allergenRow(a)); });
-    if (data.fragrance && (!data.allergens || !data.allergens.length)) allergens.appendChild(allergenRow());
-    syncFrag();
 
     return card;
   }
 
-  function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
-  function yq(s) { return '"' + String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"'; }
-  function num(s, dflt) { var v = parseFloat(s); return isNaN(v) ? (dflt == null ? 0 : dflt) : v; }
+  function appendIngredient(data, opts) {
+    var box = document.getElementById("ingredients");
+    if (!box) return null;
+    var card = ingredientCard(data);
+    box.appendChild(card);
+    return card;
+  }
+
+  // --- сериализация форма → YAML ---
+  function compLine(c) {
+    var parts = ["inci_name: " + yq(c.inci_name)];
+    if (c.cas) parts.push("cas: " + yq(c.cas));
+    if (c.remainder) parts.push("remainder: true");
+    else if (c.range) parts.push("range: [" + num(c.range[0]) + ", " + num(c.range[1]) + "]");
+    else if (c.at_most != null) parts.push("at_most: " + num(c.at_most));
+    else parts.push("pct: " + num(c.pct, 100));
+    return "      - { " + parts.join(", ") + " }";
+  }
 
   function buildYaml() {
     var name = document.getElementById("p-name").value || "Продукт";
@@ -101,30 +179,51 @@
     lines.push("");
     lines.push("raw_materials:");
 
-    var cards = document.querySelectorAll("#ingredients .ingredient");
-    cards.forEach(function (card) {
+    document.querySelectorAll("#ingredients .ingredient").forEach(function (card) {
       var nm = card.querySelector(".ing-name").value.trim();
       if (!nm) return;
       var dose = num(card.querySelector(".ing-dose").value, 0);
-      var isFrag = card.querySelector(".ing-frag").checked;
       lines.push("  - name: " + yq(nm));
       lines.push("    dose_pct: " + dose);
-      if (isFrag) {
+
+      if (card._composition) {                       // запазен състав от даташийта
+        lines.push("    composition:");
+        card._composition.forEach(function (c) { lines.push(compLine(c)); });
+        return;
+      }
+      var fragEl = card.querySelector(".ing-frag");
+      if (fragEl && fragEl.checked) {                // аромат + алергени
         lines.push("    is_fragrance: true");
         lines.push("    allergens:");
         card.querySelectorAll(".allergen-row").forEach(function (ar) {
           var an = ar.querySelector(".al-name").value.trim();
           if (!an) return;
-          var ap = num(ar.querySelector(".al-pct").value, 0);
-          lines.push("      - { name: " + yq(an) + ", pct_in_fragrance: " + ap + " }");
+          lines.push("      - { name: " + yq(an) + ", pct_in_fragrance: " + num(ar.querySelector(".al-pct").value, 0) + " }");
         });
-      } else {
-        var inci = card.querySelector(".ing-inci").value.trim() || nm;
+      } else {                                       // обикновена едно-INCI суровина
+        var inci = (card.querySelector(".ing-inci").value || "").trim() || nm;
         lines.push("    composition:");
         lines.push("      - { inci_name: " + yq(inci) + ", pct: 100 }");
       }
     });
     return lines.join("\n") + "\n";
+  }
+
+  // --- валидиране на дозите преди изчисление ---
+  function firstDoseProblem() {
+    var cards = document.querySelectorAll("#ingredients .ingredient");
+    var named = 0, bad = null;
+    cards.forEach(function (card) {
+      var nm = card.querySelector(".ing-name").value.trim();
+      if (!nm) return;
+      named++;
+      var d = card.querySelector(".ing-dose");
+      if (!isNum(d.value)) { d.classList.add("invalid"); if (!bad) bad = d; }
+      else d.classList.remove("invalid");
+    });
+    if (named === 0) return { kind: "empty" };
+    if (bad) return { kind: "dose", el: bad };
+    return null;
   }
 
   function toast(msg) {
@@ -137,6 +236,26 @@
     t._timer = setTimeout(function () { t.classList.remove("show"); t.hidden = true; }, 3000);
   }
 
+  function focusFirstEmptyDose() {
+    var d = document.querySelector("#ingredients .ing-dose.invalid") ||
+      Array.prototype.filter.call(document.querySelectorAll("#ingredients .ing-dose"),
+        function (x) { return !isNum(x.value); })[0];
+    if (d) { d.classList.add("invalid"); d.focus(); }
+  }
+
+  // --- добавяне от извлечена чернова ---
+  function readDraft(id) {
+    var node = document.getElementById(id);
+    if (!node) return [];
+    try { return JSON.parse(node.textContent); } catch (e) { return []; }
+  }
+  function addRms(rms) {
+    if (!rms || !rms.length) { toast("Няма какво да добавя"); return; }
+    rms.forEach(function (rm) { appendIngredient(normalizeRm(rm)); });
+    toast(rms.length === 1 ? "Добавена 1 съставка" : "Добавени " + rms.length + " съставки");
+    focusFirstEmptyDose();
+  }
+
   // --- инициализация ---
   document.addEventListener("DOMContentLoaded", function () {
     var box = document.getElementById("ingredients");
@@ -144,41 +263,62 @@
 
     var add = document.getElementById("add-ingredient");
     if (add) add.addEventListener("click", function () {
-      var card = ingredientCard();
-      box.appendChild(card);
-      var inp = card.querySelector(".ing-name");
+      var card = appendIngredient();
+      var inp = card && card.querySelector(".ing-name");
       if (inp) inp.focus();
     });
   });
 
-  // Преди заявката: ако „Разширен режим“ е затворен, генерирай YAML от формата.
-  document.body.addEventListener("htmx:configRequest", function (e) {
-    if (e.detail.elt && e.detail.elt.id === "formula-form") {
-      var adv = document.querySelector("#formula-form .advanced");
-      if (!(adv && adv.open)) {
-        var y = buildYaml();
-        var ta = document.getElementById("yaml");
-        if (ta) ta.value = y;
-        e.detail.parameters["formula"] = y;
+  // махане на „invalid“ щом потребителят започне да пише доза
+  document.body.addEventListener("input", function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains("ing-dose"))
+      e.target.classList.remove("invalid");
+  });
+
+  // делегиране на бутоните „Добави“ / „Добави всички“ (вмъкват се от HTMX)
+  document.body.addEventListener("click", function (e) {
+    var all = e.target.closest ? e.target.closest("[data-add-all]") : null;
+    if (all) { addRms(readDraft(all.getAttribute("data-add-all"))); return; }
+    var one = e.target.closest ? e.target.closest("[data-add-from]") : null;
+    if (one) {
+      var rms = readDraft(one.getAttribute("data-add-from"));
+      var i = parseInt(one.getAttribute("data-index"), 10) || 0;
+      if (rms[i]) addRms([rms[i]]);
+      return;
+    }
+    // копиране в клипборда
+    var copy = e.target.closest ? e.target.closest("[data-copy]") : null;
+    if (copy) {
+      var src = document.querySelector(copy.getAttribute("data-copy"));
+      if (!src) return;
+      var text = src.textContent.trim();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { toast("Копирано ✓"); });
+      } else {
+        var r = document.createRange(); r.selectNode(src);
+        var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+        try { document.execCommand("copy"); toast("Копирано ✓"); } catch (_) {}
+        s.removeAllRanges();
       }
     }
   });
 
-  // Копиране в клипборда (резултатите се вмъкват от HTMX → делегиране).
-  document.body.addEventListener("click", function (e) {
-    var btn = e.target.closest ? e.target.closest("[data-copy]") : null;
-    if (!btn) return;
-    var sel = btn.getAttribute("data-copy");
-    var src = document.querySelector(sel);
-    if (!src) return;
-    var text = src.textContent.trim();
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () { toast("Копирано ✓"); });
-    } else {
-      var r = document.createRange(); r.selectNode(src);
-      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-      try { document.execCommand("copy"); toast("Копирано ✓"); } catch (_) {}
-      s.removeAllRanges();
+  // Преди заявката: валидирай дозите и генерирай YAML от формата.
+  document.body.addEventListener("htmx:configRequest", function (e) {
+    if (!(e.detail.elt && e.detail.elt.id === "formula-form")) return;
+    var adv = document.querySelector("#formula-form .advanced");
+    if (adv && adv.open) return;  // разширен режим → използва се ръчният YAML
+
+    var prob = firstDoseProblem();
+    if (prob) {
+      e.preventDefault();
+      if (prob.kind === "empty") toast("Добави поне една съставка");
+      else { toast("Въведи доза за всяка съставка"); if (prob.el) prob.el.focus(); }
+      return;
     }
+    var y = buildYaml();
+    var ta = document.getElementById("yaml");
+    if (ta) ta.value = y;
+    e.detail.parameters["formula"] = y;
   });
 })();

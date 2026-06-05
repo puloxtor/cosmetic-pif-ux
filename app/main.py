@@ -61,18 +61,27 @@ def index(request: Request):
 
 @app.post("/extract", response_class=HTMLResponse)
 async def extract(request: Request,
-                  file: UploadFile = File(...),
+                  files: list[UploadFile] = File(...),
                   type: str = Form("auto"),
                   ocr: str = Form("auto")):
-    data = await file.read()
-    error = None
-    draft = ""
-    try:
-        draft = engine.extract_document(data, file.filename or "document", type, ocr)
-    except Exception as e:  # извличането никога не бива да събаря UI-я
-        error = engine.friendly_error(e)
+    """Един или няколко документа → чернови суровини за добавяне във формата.
+
+    Всеки файл се обработва отделно: грешка в един не спира останалите.
+    """
+    documents = []
+    for f in files:
+        name = f.filename or "document"
+        doc = {"filename": name, "rms": [], "notes": [], "error": None}
+        try:
+            data = await f.read()
+            rms, notes = engine.extract_structured(data, name, type, ocr)
+            doc["rms"] = rms
+            doc["notes"] = notes
+        except Exception as e:  # извличането никога не бива да събаря UI-я
+            doc["error"] = engine.friendly_error(e)
+        documents.append(doc)
     return templates.TemplateResponse(request, "_draft.html", {
-        "draft": draft, "error": error, "filename": file.filename,
+        "documents": documents,
     })
 
 

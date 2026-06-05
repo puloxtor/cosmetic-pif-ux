@@ -69,11 +69,40 @@ def test_friendly_error_maps_common_cases():
     assert "ANTHROPIC_API_KEY" in auth
 
 
-def test_extract_endpoint_uses_engine(monkeypatch):
-    monkeypatch.setattr(engine, "extract_document",
-                        lambda data, fn, kind, ocr: "raw_materials:\n- name: X\n  dose_pct: 1\n")
+def _fake_extract(rms, notes):
+    return lambda data, fn, kind, ocr: (rms, list(notes))
+
+
+def test_extract_endpoint_returns_structured_draft(monkeypatch):
+    rms = [{"name": "Sweet Almond Oil", "dose_pct": "TODO",
+            "composition": [{"inci_name": "Prunus Amygdalus Dulcis Oil", "pct": 100}]}]
+    monkeypatch.setattr(engine, "extract_structured", _fake_extract(rms, ["провери числата"]))
     r = client.post("/extract",
                     data={"type": "composition", "ocr": "never"},
-                    files={"file": ("x.pdf", b"%PDF-1.4 dummy", "application/pdf")})
+                    files={"files": ("x.pdf", b"%PDF-1.4 dummy", "application/pdf")})
     assert r.status_code == 200
-    assert "raw_materials" in r.text and "ЧЕРНОВА" in r.text
+    assert "Sweet Almond Oil" in r.text          # дружелюбен преглед
+    assert "Добави" in r.text                     # бутон за добавяне
+    assert 'application/json' in r.text           # вграден JSON за един клик
+    assert "провери числата" in r.text            # бележки от сканирането
+
+
+def test_extract_handles_multiple_files_and_per_file_error(monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(data, fn, kind, ocr):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("Could not resolve authentication method: api_key")
+        return ([{"name": "Water", "dose_pct": 50,
+                  "composition": [{"inci_name": "Aqua", "pct": 100}]}], [])
+
+    monkeypatch.setattr(engine, "extract_structured", flaky)
+    r = client.post("/extract",
+                    data={"type": "auto", "ocr": "auto"},
+                    files=[("files", ("a.pdf", b"%PDF a", "application/pdf")),
+                           ("files", ("b.jpg", b"\xff\xd8 b", "image/jpeg"))])
+    assert r.status_code == 200
+    assert "a.pdf" in r.text and "b.jpg" in r.text   # две карти
+    assert 'role="alert"' in r.text                  # грешката за втория файл
+    assert "ANTHROPIC_API_KEY" in r.text             # дружелюбно съобщение

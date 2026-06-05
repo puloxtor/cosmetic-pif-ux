@@ -163,6 +163,27 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .err-box strong { color:var(--err); }
 .err-box p { margin:.4rem 0 0; }
 
+/* извлечени документи (чернова) */
+#draft { margin-top:var(--s3); display:flex; flex-direction:column; gap:var(--s3); }
+.doc-card { border:1px solid var(--line); border-radius:var(--radius-sm); padding:var(--s3) var(--s4); background:var(--surface); }
+.doc-head { display:flex; align-items:center; gap:.45rem; color:var(--ink); font-size:.92rem; margin-bottom:var(--s2); }
+.doc-head svg { color:var(--primary-d); flex:0 0 auto; }
+.doc-actions { display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap; margin:var(--s2) 0; }
+.btn-secondary.small { padding:.4rem .8rem; min-height:0; font-size:.84rem; }
+.draft-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.4rem; }
+.draft-item { display:flex; align-items:center; justify-content:space-between; gap:var(--s3);
+  background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:.45rem .6rem; }
+.draft-meta { display:flex; flex-direction:column; min-width:0; }
+.di-name { font-weight:600; font-size:.88rem; }
+.di-sub { color:var(--muted); font-size:.78rem; }
+
+/* запазен състав от даташийта */
+.comp-wrap { gap:.3rem; }
+.comp-summary { margin:.2rem 0 0; color:var(--muted); font-size:.78rem; }
+
+/* подчертаване на липсваща задължителна доза */
+input.invalid { border-color:var(--err); box-shadow:0 0 0 3px rgba(156,35,41,.18); background:#fff8f8; }
+
 /* toast */
 .toast { position:fixed; left:50%; bottom:1.5rem; transform:translate(-50%,1rem);
   background:var(--ink); color:#fff; padding:.6rem 1rem; border-radius:999px; font-size:.85rem;

@@ -18,8 +18,8 @@ from pif_engine import (
 from pif_engine.extraction.router import extract_drafts
 from pif_engine.extraction.draft import to_yaml
 
-__all__ = ["ENGINE_VERSION", "extract_document", "compute_from_yaml",
-           "friendly_error"]
+__all__ = ["ENGINE_VERSION", "extract_document", "extract_structured",
+           "compute_from_yaml", "friendly_error"]
 
 
 def friendly_error(exc: Exception) -> str:
@@ -56,8 +56,13 @@ def friendly_error(exc: Exception) -> str:
     return text
 
 
-def extract_document(data: bytes, filename: str, kind: str, ocr_mode: str) -> str:
-    """Качен документ → ЧЕРНОВА YAML фрагмент (raw_materials) за проверка."""
+def extract_structured(data: bytes, filename: str, kind: str, ocr_mode: str):
+    """Качен документ → (raw_materials: list[dict], notes: list[str]).
+
+    Връща структурираните чернови суровини точно както енджинът ги дава, за да
+    могат да станат редове във формата с едно кликане. Числата са ПРЕДЛОЖЕНИЕ —
+    проверяват се от човек.
+    """
     suffix = os.path.splitext(filename)[1] or ".bin"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
         tf.write(data)
@@ -67,6 +72,12 @@ def extract_document(data: bytes, filename: str, kind: str, ocr_mode: str) -> st
         rms, notes = extract_drafts(path, kind=kind, ocr_mode=ocr_mode, name=name)
     finally:
         os.unlink(path)
+    return rms, notes
+
+
+def extract_document(data: bytes, filename: str, kind: str, ocr_mode: str) -> str:
+    """Качен документ → ЧЕРНОВА YAML фрагмент (за разширения режим)."""
+    rms, notes = extract_structured(data, filename, kind, ocr_mode)
     return to_yaml(rms, notes=notes)
 
 
