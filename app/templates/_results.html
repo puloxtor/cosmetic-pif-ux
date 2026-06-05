@@ -2,8 +2,11 @@
   <h3>{{ r.name }} <span class="badge">{{ r.product_type }}</span></h3>
 
   {% if r.warnings %}
-  <div class="alarms">
-    <strong>⚠️ Аларми / бележки</strong>
+  <div class="alarms" role="alert">
+    <strong>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      Аларми и бележки от проверката
+    </strong>
     <ul>{% for w in r.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
   </div>
   {% endif %}
@@ -16,17 +19,43 @@
       <tr><td>{{ row.inci }}</td><td class="num">{{ "%.4f"|format(row.pct) }}</td></tr>
       {% endfor %}
       <tr class="total"><td>СУМА</td>
-        <td class="num">{{ "%.4f"|format(r.total) }}{% if not r.sum_ok %} ⚠️{% else %} ✅{% endif %}</td></tr>
+        <td class="num">{{ "%.4f"|format(r.total) }}</td></tr>
     </tbody>
   </table>
+  {% if r.sum_ok %}
+  <p class="status ok">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    Сборът е 100% — съставът е пълен.
+  </p>
+  {% else %}
+  <p class="status warn">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+    Сборът не е 100% — провери дозите на съставките.
+  </p>
+  {% endif %}
 
   <h4>Алергени за деклариране ({{ r.declared|length }})</h4>
   <p>{% if r.declared %}{{ r.declared|join(", ") }}{% else %}<span class="muted">няма</span>{% endif %}</p>
+  <details class="explain"><summary>Какво е това?</summary>
+    <p>Член 19 изисква тези съставки от ароматите да са изброени на етикета,
+    щом надвишават прага (0,001% за остава-върху / 0,01% за отмива-се).</p>
+  </details>
 
   <h4>Генериран INCI (Член 19)</h4>
-  <pre class="inci">{{ r.inci|join(", ") }}</pre>
+  <div class="inci-head">
+    <button type="button" class="btn-ghost small" data-copy="#inci-text"
+            aria-label="Копирай INCI списъка">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+      Копирай
+    </button>
+  </div>
+  <pre class="inci" id="inci-text">{{ r.inci|join(", ") }}</pre>
+  <details class="explain"><summary>Какво е това?</summary>
+    <p>Това е списъкът на съставките за етикета — подреден по концентрация,
+    с ароматните алергени накрая.</p>
+  </details>
 
   {% if r.cpsr %}
-  <details><summary>Пълен CPSR доклад</summary><pre class="cpsr">{{ r.cpsr }}</pre></details>
+  <details class="cpsr-block"><summary>Пълен CPSR доклад</summary><pre class="cpsr">{{ r.cpsr }}</pre></details>
   {% endif %}
 </div>

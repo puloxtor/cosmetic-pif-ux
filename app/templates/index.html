@@ -3,72 +3,127 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PIF / CPSR — таблица + INCI</title>
+  <title>Козметичен PIF / CPSR — състав, INCI и алергени</title>
   <link rel="stylesheet" href="/static/style.css">
-  <!-- HTMX от CDN. За напълно офлайн употреба: свали го в app/static/htmx.min.js
-       и смени src на "/static/htmx.min.js" (виж README). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap&subset=cyrillic,latin" rel="stylesheet">
+  <!-- HTMX от CDN. За офлайн: свали в app/static/htmx.min.js и смени src (виж README). -->
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <script defer src="/static/app.js"></script>
 </head>
 <body>
   <header>
-    <h1>Козметичен PIF / CPSR</h1>
-    <span class="badge">енджин pif-engine v{{ engine_version }}</span>
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5.5L5.8 17a3 3 0 0 0 2.7 4.3h7a3 3 0 0 0 2.7-4.3L14 8.5V3"/><path d="M7.5 14h9"/></svg>
+      </span>
+      <div>
+        <h1>Козметичен PIF / CPSR</h1>
+        <p class="tagline">Състав, INCI по Член 19 и алергени — от твоята рецепта.</p>
+      </div>
+    </div>
+    <span class="badge" title="Версия на изчислителния енджин">pif-engine v{{ engine_version }}</span>
   </header>
 
   <main>
-    <section class="col">
-      <h2>1 · Формула</h2>
-      <p class="hint">Въведи суровините и дозите им (% в крайния продукт). За всяка
-      суровина — композишън стейтмънта (точен %, диапазон <code>[lo, hi]</code> →
-      взима горната граница, или <code>remainder: true</code>). Ароматните —
-      с алергени и техния % в парфюма.</p>
+    <section class="col" aria-labelledby="step1-h">
+      <h2 id="step1-h"><span class="step">1</span> Формула</h2>
+      <p class="hint">Въведи съставките и колко процента са в крайния продукт.
+      За аромат/парфюм — отбележи го и добави алергените му.</p>
 
-      <form hx-post="/compute" hx-target="#results" hx-indicator="#spin">
-        <textarea name="formula" spellcheck="false" rows="26">{{ sample }}</textarea>
-        <label class="inline"><input type="checkbox" name="cpsr" value="1"> добави и пълен CPSR</label>
-        <button type="submit">Изчисли таблица + INCI</button>
-        <span id="spin" class="htmx-indicator">…смятам</span>
-      </form>
-
-      <h2>2 · Качи документ (по избор)</h2>
-      <p class="hint">Извлича <em>чернова</em> композиция/алергени от доставчиков
-      документ. Цифров PDF → детерминистично; снимка/сканиран → AI-зрение
-      (нужен <code>ANTHROPIC_API_KEY</code>). <strong>Провери всяко число</strong>
-      и копирай в полето горе.</p>
-      <form hx-post="/extract" hx-target="#draft" hx-encoding="multipart/form-data" hx-indicator="#spin2">
-        <input type="file" name="file" required>
-        <div class="row">
-          <label>тип
-            <select name="type">
-              <option value="auto">auto</option>
-              <option value="composition">composition</option>
-              <option value="fragrance">fragrance</option>
-              <option value="formula">formula (рецепта)</option>
+      <form id="formula-form" hx-post="/compute" hx-target="#results" hx-indicator="#spin">
+        <div class="field-grid">
+          <label class="field">Име на продукта
+            <input type="text" id="p-name" value="Demo Beard Oil" autocomplete="off">
+          </label>
+          <label class="field">Тип
+            <select id="p-type">
+              <option value="leave-on">Остава върху кожата (leave-on)</option>
+              <option value="rinse-off">Отмива се (rinse-off)</option>
             </select>
           </label>
-          <label>OCR
-            <select name="ocr">
-              <option value="auto">auto</option>
-              <option value="force">force (AI-зрение)</option>
-              <option value="never">never</option>
-            </select>
+          <label class="field">Нанесено количество (g/ден)
+            <input type="number" id="p-amount" value="2.0" step="0.1" min="0" inputmode="decimal">
           </label>
-          <button type="submit">Извлечи чернова</button>
-          <span id="spin2" class="htmx-indicator">…чета</span>
+          <label class="field">Държави на продажба
+            <input type="text" id="p-countries" value="BG" autocomplete="off"
+                   aria-describedby="countries-hint">
+            <small id="countries-hint" class="field-hint">през запетая, напр. BG, DE</small>
+          </label>
         </div>
+
+        <h3 class="block-title">Съставки</h3>
+        <div id="ingredients" role="list"></div>
+
+        <button type="button" id="add-ingredient" class="btn-ghost">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Добави съставка
+        </button>
+
+        <div class="actions">
+          <label class="inline"><input type="checkbox" name="cpsr" value="1"> Добави и пълен CPSR доклад</label>
+          <button type="submit" class="btn-primary">
+            Изчисли таблица + INCI
+            <span id="spin" class="htmx-indicator" aria-live="polite">смятам…</span>
+          </button>
+        </div>
+
+        <details class="advanced">
+          <summary>Разширен режим (YAML)</summary>
+          <p class="field-hint">За напреднали: ако редактираш тук и оставиш това
+          отворено, изпраща се този YAML вместо формата.</p>
+          <textarea name="formula" id="yaml" spellcheck="false" rows="16">{{ sample }}</textarea>
+        </details>
       </form>
-      <div id="draft"></div>
+
+      <h2><span class="step">2</span> Качи документ <span class="optional">(по избор)</span></h2>
+      <p class="hint">Извлича <em>чернова</em> от доставчиков документ. Цифров PDF
+      се чете директно; снимка/сканиран минава през AI-зрение и иска
+      <code>ANTHROPIC_API_KEY</code>. <strong>Провери всяко число</strong> и го
+      пренеси в съставките горе.</p>
+      <form hx-post="/extract" hx-target="#draft" hx-encoding="multipart/form-data" hx-indicator="#spin2">
+        <label class="field">Файл
+          <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.webp" required>
+        </label>
+        <div class="row">
+          <label class="field">Вид документ
+            <select name="type">
+              <option value="auto">Автоматично</option>
+              <option value="composition">Композиция (състав)</option>
+              <option value="fragrance">Аромат (алергени)</option>
+              <option value="formula">Рецепта</option>
+            </select>
+            <small class="field-hint">Остави „Автоматично“, ако не си сигурна.</small>
+          </label>
+          <label class="field">Разчитане
+            <select name="ocr">
+              <option value="auto">Автоматично</option>
+              <option value="force">AI-зрение (за снимки)</option>
+              <option value="never">Само текст (без AI)</option>
+            </select>
+            <small class="field-hint">„AI-зрение“ иска ключ и е платено.</small>
+          </label>
+        </div>
+        <button type="submit" class="btn-secondary">
+          Извлечи чернова
+          <span id="spin2" class="htmx-indicator" aria-live="polite">чета…</span>
+        </button>
+      </form>
+      <div id="draft" aria-live="polite"></div>
     </section>
 
-    <section class="col">
-      <h2>Резултат</h2>
-      <div id="results"><p class="muted">Натисни „Изчисли" вляво.</p></div>
+    <section class="col" aria-labelledby="res-h">
+      <h2 id="res-h">Резултат</h2>
+      <div id="results" aria-live="polite"><p class="empty">Попълни формулата вляво и натисни <strong>„Изчисли“</strong>.</p></div>
     </section>
   </main>
 
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
   <footer>
-    <p>⚠️ Подготвя, не замества квалифициран оценител (Член 10). Числата от
-    AI-извличане са чернова за проверка.</p>
+    <p>⚠️ Този инструмент подготвя, но не замества квалифициран оценител
+    (Член 10). Числата от AI-извличане са чернова за проверка.</p>
   </footer>
 </body>
 </html>

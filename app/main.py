@@ -70,7 +70,7 @@ async def extract(request: Request,
     try:
         draft = engine.extract_document(data, file.filename or "document", type, ocr)
     except Exception as e:  # извличането никога не бива да събаря UI-я
-        error = str(e)
+        error = engine.friendly_error(e)
     return templates.TemplateResponse(request, "_draft.html", {
         "draft": draft, "error": error, "filename": file.filename,
     })
@@ -81,5 +81,6 @@ def compute(request: Request, formula: str = Form(...), cpsr: str = Form(None)):
     try:
         result = engine.compute_from_yaml(formula, include_cpsr=bool(cpsr))
     except Exception as e:
-        return templates.TemplateResponse(request, "_error.html", {"error": str(e)})
+        return templates.TemplateResponse(request, "_error.html",
+                                          {"error": engine.friendly_error(e)})
     return templates.TemplateResponse(request, "_results.html", {"r": result})

@@ -1,9 +1,15 @@
 <div class="draft">
   {% if error %}
-    <p class="err">Грешка при извличане на „{{ filename }}": {{ error }}</p>
+    <div class="alarms err-box" role="alert">
+      <strong>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        Не успях да прочета „{{ filename }}“
+      </strong>
+      <p>{{ error }}</p>
+    </div>
   {% else %}
-    <p class="hint">ЧЕРНОВА от „{{ filename }}" — <strong>провери всяко число</strong>,
-    после копирай нужните редове в полето с формулата.</p>
+    <p class="hint">ЧЕРНОВА от „{{ filename }}“ — <strong>провери всяко число</strong>,
+    после пренеси нужните съставки горе.</p>
     <pre class="draftyaml">{{ draft }}</pre>
   {% endif %}
 </div>

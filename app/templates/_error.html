@@ -1,4 +1,11 @@
 <div class="result">
-  <p class="err">Не мога да изчисля: {{ error }}</p>
-  <p class="hint">Провери YAML структурата (product / raw_materials) и стойностите.</p>
+  <div class="alarms err-box" role="alert">
+    <strong>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      Не мога да изчисля
+    </strong>
+    <p>{{ error }}</p>
+  </div>
+  <p class="hint">Поправи горното и натисни „Изчисли“ отново. При нужда виж
+  „Разширен режим (YAML)“.</p>
 </div>

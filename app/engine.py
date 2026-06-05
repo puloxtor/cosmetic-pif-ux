@@ -18,7 +18,42 @@ from pif_engine import (
 from pif_engine.extraction.router import extract_drafts
 from pif_engine.extraction.draft import to_yaml
 
-__all__ = ["ENGINE_VERSION", "extract_document", "compute_from_yaml"]
+__all__ = ["ENGINE_VERSION", "extract_document", "compute_from_yaml",
+           "friendly_error"]
+
+
+def friendly_error(exc: Exception) -> str:
+    """Сурова грешка → разбираемо съобщение на човешки език.
+
+    Не крие проблема — обяснява причината и какво да се направи. Числата и
+    логиката идват само от енджина; тук само превеждаме съобщенията.
+    """
+    text = str(exc)
+
+    # AI-зрението без ключ (най-честият случай при качване на снимка).
+    if ("authentication" in text.lower() or "api_key" in text.lower()
+            or "ANTHROPIC_API_KEY" in text):
+        return ("AI разчитането на снимки/сканирани документи иска ключ "
+                "(ANTHROPIC_API_KEY). Качи цифров PDF или въведи съставките "
+                "ръчно във формата.")
+
+    # Грешка в YAML структурата — посочи реда, ако го има.
+    if isinstance(exc, yaml.YAMLError):
+        mark = getattr(exc, "problem_mark", None)
+        if mark is not None:
+            return (f"Има грешка в структурата на формулата (ред {mark.line + 1}). "
+                    "Провери дали отстъпите и двоеточията са правилни.")
+        return ("Има грешка в структурата на формулата. Провери дали отстъпите "
+                "и двоеточията са правилни.")
+
+    # Липсващи задължителни полета.
+    if isinstance(exc, KeyError):
+        missing = text.strip("'\"")
+        return (f"Липсва задължително поле „{missing}“. Всеки продукт има име, "
+                "тип и поне една съставка.")
+
+    # Резервен вариант — пак показваме съобщението, но подканяме за проверка.
+    return text
 
 
 def extract_document(data: bytes, filename: str, kind: str, ocr_mode: str) -> str:
