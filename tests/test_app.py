@@ -120,6 +120,8 @@ def test_extract_endpoint_returns_structured_draft(monkeypatch):
     assert "data-add-all" in r.text               # бутон „добави всички“
     assert "data-add-one" in r.text               # бутон за една съставка
     assert "data-rms=" in r.text                  # структурирани данни за един клик
+    assert 'class="di-dest"' in r.text            # избор: нова или допълни съществуваща
+    assert 'class="di-conflicts"' in r.text       # място за разрешаване на конфликти
     assert "провери числата" in r.text            # бележки от сканирането
 
 

@@ -198,6 +198,20 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .di-name { font-weight:600; font-size:.88rem; }
 .di-sub { color:var(--muted); font-size:.78rem; }
 
+/* избор на дестинация: нова съставка или допълни съществуваща */
+.di-dest-wrap { margin-top:.35rem; flex-direction:row; align-items:center; gap:.35rem; color:#54514b; }
+.di-dest { font-size:.8rem; padding:.2rem .35rem; border:1px solid var(--line);
+  border-radius:var(--radius-sm); background:var(--surface); max-width:18rem; }
+.di-conflicts { list-style:none; margin:.2rem 0 0; padding:0; }
+.cf-panel { background:var(--warn-soft); border:1px solid var(--line);
+  border-radius:var(--radius-sm); padding:.55rem .7rem; display:flex; flex-direction:column; gap:.4rem; }
+.cf-panel > strong { font-size:.82rem; }
+.cf-row { display:flex; flex-direction:column; gap:.2rem; }
+.cf-label { font-size:.76rem; font-weight:700; color:#54514b; }
+.cf-opt { font-size:.8rem; display:flex; align-items:center; gap:.35rem; }
+.cf-opt span { font-weight:600; }
+.cf-apply { align-self:flex-start; }
+
 /* запазен състав от даташийта */
 .comp-wrap { gap:.3rem; }
 .comp-summary { margin:.2rem 0 0; color:var(--muted); font-size:.78rem; }

@@ -48,9 +48,13 @@
                 {%- endif -%}
                 {% if rm.dose_pct and rm.dose_pct != "TODO" %} · {{ rm.dose_pct }}%{% else %} · доза: въведи{% endif %}
               </span>
+              <label class="mini di-dest-wrap">Към
+                <select class="di-dest" data-index="{{ loop.index0 }}"></select>
+              </label>
             </div>
             <button type="button" class="btn-ghost small" data-add-one data-index="{{ loop.index0 }}">Добави</button>
           </li>
+          <li class="di-conflicts" data-index="{{ loop.index0 }}" hidden></li>
           {% endfor %}
         </ul>
       {% else %}
