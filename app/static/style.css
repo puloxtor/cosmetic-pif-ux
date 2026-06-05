@@ -168,13 +168,25 @@ pre.inci, pre.draftyaml, pre.cpsr {
   display:flex; flex-direction:column; align-items:flex-start; gap:.5rem; }
 .gate-note button { align-self:flex-start; }
 
-/* непроверен (AI) ред — карантина, докато човек не потвърди */
+/* непроверен (AI) ред — карантина, докато всяка стойност не се потвърди */
 .ingredient.unverified { border-color:var(--warn-line); background:#fffaf0; }
 .unverified-badge { flex-basis:100%; display:flex; align-items:center; justify-content:space-between;
   gap:.5rem; background:var(--warn-soft); border:1px solid var(--warn-line); border-radius:var(--radius-sm);
   padding:.3rem .5rem; margin-bottom:.4rem; }
 .uv-tag { font-size:.76rem; font-weight:700; color:var(--warn); display:inline-flex; align-items:center; gap:.35rem; }
 .yaml-ack { margin-top:.5rem; font-size:.82rem; }
+
+/* предложена (непотвърдена) стойност — чернова, не влиза в изчислението */
+.proposed input, input.proposed { border:1px dashed var(--warn) !important; background:#fff6e6; }
+.confirm-val { color:var(--warn); border-color:var(--warn-line); font-weight:700; }
+
+/* кандидат-съставки от даташийт */
+.comp-head { flex-basis:100%; margin:.2rem 0; font-size:.8rem; font-weight:600; color:#54514b; }
+.constituents { flex-basis:100%; display:flex; flex-direction:column; gap:.35rem; }
+.constituent-row { display:flex; align-items:center; gap:.5rem; background:var(--surface-2);
+  border:1px solid var(--line); border-radius:var(--radius-sm); padding:.3rem .5rem; }
+.constituent-row.proposed { background:#fff6e6; border-color:var(--warn-line); }
+.cst-amt { font-size:.78rem; color:var(--muted); white-space:nowrap; }
 
 /* alarms / errors */
 .alarms { background:var(--warn-soft); border:1px solid var(--warn-line); color:#4a3a1c;

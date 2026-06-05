@@ -6,6 +6,7 @@ UX-ът НЕ дублира никаква енджин логика — сам�
 """
 from __future__ import annotations
 import os
+import re
 import tempfile
 
 import yaml
@@ -20,7 +21,8 @@ from pif_engine.extraction.router import extract_drafts
 from pif_engine.extraction.draft import to_yaml
 
 __all__ = ["ENGINE_VERSION", "extract_document", "extract_structured",
-           "compute_from_yaml", "allergen_table", "friendly_error"]
+           "filter_candidates", "compute_from_yaml", "allergen_table",
+           "friendly_error"]
 
 
 def friendly_error(exc: Exception) -> str:
@@ -57,12 +59,68 @@ def friendly_error(exc: Exception) -> str:
     return text
 
 
+# --- филтър на кандидати: не-INCI текст не бива да става съставка ---------
+# Извличането (в pif_engine) понякога подава правни/таблични редове като
+# „съставки“. Тук, на ГРАНИЦАТА на UX-а (не в енджина), ги отсяваме, преди да
+# могат да се покажат/съхранят. Консервативно — извлеченото е само предложение.
+_CI_RE = re.compile(r"^(ci|c\.i\.)\s*\d{4,6}$", re.IGNORECASE)
+_NON_INCI_RE = re.compile(
+    r"(ppm|reach|regul|\breg\.|annex|registration|exempt|country of origin|"
+    r"origin\b|refined|see point|paragraph|declaration|status|1907/?2006|"
+    r"ec\s*1907|einecs|directive|according to|manufacturer|supplier|address|"
+    r"batch|specification|\blimit\b|σ|gmbh|stra(?:ss|ß)e|seite|\btel\b|\bfax\b|"
+    r"e-?mail|www|säure|\bpage\b|\bvon\b)",
+    re.IGNORECASE)
+
+
+def _plausible_inci(name: str) -> bool:
+    """Грубо: прилича ли низът на INCI име, а НЕ на правен/табличен/адресен текст.
+
+    Маркери за изхвърляне: двоеточие (напр. фатти-acid „C20:1“ или „Origin:“),
+    процент/запетая в самото име, дълги изречения, цели числа (адрес/страница/
+    пощенски код), ключови думи (REACh, ppm, „Limit“, GmbH, Seite, säure…).
+    """
+    s = (name or "").strip()
+    if not s:
+        return False
+    if _CI_RE.match(s):                       # „CI 77491“ е валиден Colour Index
+        return True
+    if len(s) > 60:
+        return False
+    if any(ch in s for ch in (":", "%", "@")) or ", " in s:
+        return False
+    if _NON_INCI_RE.search(s):
+        return False
+    if re.search(r"\d{4,}", s):               # пощенски код / „1907“ / ppm число
+        return False
+    if any(re.fullmatch(r"\d+", tok) for tok in s.split()):  # самостоятелно число → адрес/страница
+        return False
+    letters = sum(c.isalpha() for c in s)
+    if letters < 3 or letters / len(s) < 0.5:  # предимно цифри/пунктуация
+        return False
+    if len(s.split()) > 6:                     # цели изречения не са INCI
+        return False
+    return True
+
+
+def filter_candidates(rms: list[dict]) -> tuple[list[dict], int]:
+    """Маха не-INCI кандидати от композициите. Връща (rms, брой_изхвърлени)."""
+    dropped = 0
+    for rm in rms or []:
+        comp = rm.get("composition")
+        if isinstance(comp, list) and comp:
+            kept = [c for c in comp if _plausible_inci(c.get("inci_name", ""))]
+            dropped += len(comp) - len(kept)
+            rm["composition"] = kept
+    return rms, dropped
+
+
 def extract_structured(data: bytes, filename: str, kind: str, ocr_mode: str):
     """Качен документ → (raw_materials: list[dict], notes: list[str]).
 
-    Връща структурираните чернови суровини точно както енджинът ги дава, за да
-    могат да станат редове във формата с едно кликане. Числата са ПРЕДЛОЖЕНИЕ —
-    проверяват се от човек.
+    Връща структурираните чернови суровини, ПОЧИСТЕНИ от не-INCI боклук
+    (правни бележки, адреси, спец-редове), за да не могат да станат съставки.
+    Числата са ПРЕДЛОЖЕНИЕ — проверяват се от човек.
     """
     suffix = os.path.splitext(filename)[1] or ".bin"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
@@ -73,6 +131,11 @@ def extract_structured(data: bytes, filename: str, kind: str, ocr_mode: str):
         rms, notes = extract_drafts(path, kind=kind, ocr_mode=ocr_mode, name=name)
     finally:
         os.unlink(path)
+    rms, dropped = filter_candidates(rms)
+    if dropped:
+        notes.append(
+            f"{name}: пропуснати {dropped} реда, които не приличат на INCI "
+            "(правен/табличен/адресен текст). Провери дали не липсва реална съставка.")
     return rms, notes
 
 

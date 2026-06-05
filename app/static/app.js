@@ -63,14 +63,48 @@
     return "?";
   }
 
-  function allergenRow(a) {
-    var row = el("div", { class: "allergen-row", role: "listitem" });
+  // Един кандидат-съставка от даташийт (за многосъставни суровини). Когато е
+  // предложен (proposed), е чернова: маркиран, с „Потвърди“, и не влиза в YAML.
+  function constituentRow(c, proposed) {
+    var row = el("div", { class: "constituent-row" + (proposed ? " proposed" : ""), role: "listitem" });
+    if (proposed) row.setAttribute("data-proposed", "1");
+    row._spec = c;  // запазваме количествения спец (pct/range/at_most/remainder/cas)
+    row.appendChild(el("label", { class: "mini grow" },
+      'INCI<input type="text" class="cst-name" value="' + escAttr(c.inci_name) + '">'));
+    row.appendChild(el("span", { class: "cst-amt" }, escHtml(amountLabel(c))));
+    if (proposed) row.appendChild(confirmBtn());
+    var del = el("button", { type: "button", class: "icon-btn", "aria-label": "Премахни съставката" }, SVG_TRASH);
+    del.addEventListener("click", function () {
+      var card = row.closest(".ingredient"); row.remove(); syncProposed(card);
+    });
+    row.appendChild(del);
+    return row;
+  }
+  // Чете ЖИВИТЕ кандидат-редове обратно в спецификации (за YAML/сливане).
+  function readConstituents(card) {
+    var rows = card.querySelectorAll(".constituent-row");
+    if (!rows.length) return null;
+    return Array.prototype.map.call(rows, function (row) {
+      var spec = row._spec || {}, out = { inci_name: (row.querySelector(".cst-name").value || "").trim() };
+      if (spec.cas) out.cas = spec.cas;
+      if (spec.remainder) out.remainder = true;
+      else if (spec.range) out.range = spec.range;
+      else if (spec.at_most != null) out.at_most = spec.at_most;
+      else out.pct = (spec.pct != null ? spec.pct : 100);
+      return out;
+    });
+  }
+
+  function allergenRow(a, proposed) {
+    var row = el("div", { class: "allergen-row" + (proposed ? " proposed" : ""), role: "listitem" });
+    if (proposed) row.setAttribute("data-proposed", "1");
     row.appendChild(el("label", { class: "mini" }, 'Алерген<input type="text" class="al-name" value="' +
       escAttr(a && a.name) + '" placeholder="напр. Limonene">'));
     row.appendChild(el("label", { class: "mini" }, '% в аромата<input type="number" class="al-pct" step="any" min="0" inputmode="decimal" value="' +
       escAttr(a && a.pct) + '">'));
+    if (proposed) row.appendChild(confirmBtn());
     var del = el("button", { type: "button", class: "icon-btn", "aria-label": "Премахни алергена" }, SVG_TRASH);
-    del.addEventListener("click", function () { row.remove(); });
+    del.addEventListener("click", function () { var card = row.closest(".ingredient"); row.remove(); syncProposed(card); });
     row.appendChild(del);
     return row;
   }
@@ -78,8 +112,8 @@
   function ingredientCard(data) {
     data = data || { name: "", dose: "", inci: "", fragrance: false, allergens: [], composition: null };
     var rich = !!(data.composition && data.composition.length);
+    var proposed = !!data.proposed;   // дошло от извличане → чернова до потвърждение
     var card = el("div", { class: "ingredient", role: "listitem" });
-    if (rich) card._composition = data.composition;
 
     card.appendChild(el("label", { class: "field grow" }, 'Съставка<input type="text" class="ing-name" value="' +
       escAttr(data.name) + '" placeholder="напр. Sweet Almond Oil" autocomplete="off">'));
@@ -90,24 +124,25 @@
       escAttr(data.dose) + '">'));
 
     // Прост едно-INCI вход (за ръчни и едносъставни извлечени суровини).
-    var inciLabel = el("label", { class: "field grow ing-inci-wrap" }, 'INCI име<input type="text" class="ing-inci" value="' +
-      escAttr(data.inci) + '" placeholder="напр. Prunus Amygdalus Dulcis Oil" autocomplete="off">');
+    var inciProposed = proposed && !rich && !!data.inci;
+    var inciLabel = el("label", { class: "field grow ing-inci-wrap" },
+      'INCI име<input type="text" class="ing-inci' + (inciProposed ? " proposed" : "") + '"' +
+      (inciProposed ? ' data-proposed="1"' : "") + ' value="' + escAttr(data.inci) +
+      '" placeholder="напр. Prunus Amygdalus Dulcis Oil" autocomplete="off">');
+    if (inciProposed) inciLabel.appendChild(confirmBtn());
     card.appendChild(inciLabel);
 
-    // Запазен състав от даташийта (много INCI / диапазони) — без загуба на данни.
+    // Многосъставен състав от даташийт → кандидат-редове (всеки се потвърждава
+    // или маха поотделно); непотвърдените НЕ влизат в изчислението.
     if (rich) {
       inciLabel.style.display = "none";
-      var comp = data.composition;
       var wrap = el("div", { class: "field grow comp-wrap" });
-      if (comp.length > 1) {
-        var opts = comp.map(function (c, i) {
-          return '<option value="' + i + '">' + escHtml(c.inci_name) + '</option>';
-        }).join("");
-        wrap.appendChild(el("label", { class: "field" }, "Основен INCI" +
-          '<select class="ing-primary">' + opts + '</select>'));
-      }
-      var sum = comp.map(function (c) { return escHtml(c.inci_name) + " (" + escHtml(amountLabel(c)) + ")"; }).join(", ");
-      wrap.appendChild(el("p", { class: "comp-summary" }, "от даташийта: " + sum));
+      wrap.appendChild(el("p", { class: "comp-head" }, proposed
+        ? "Кандидати за INCI (AI чернова) — потвърди или премахни всеки спрямо източника:"
+        : "Състав от даташийта:"));
+      var clist = el("div", { class: "constituents", role: "list" });
+      data.composition.forEach(function (c) { clist.appendChild(constituentRow(c, proposed)); });
+      wrap.appendChild(clist);
       card.appendChild(wrap);
     }
 
@@ -135,11 +170,12 @@
       var togInput = tog.querySelector("input");
       function syncFrag() { card.classList.toggle("is-fragrance", togInput.checked); }
       togInput.addEventListener("change", syncFrag);
-      (data.allergens || []).forEach(function (a) { allergens.appendChild(allergenRow(a)); });
+      (data.allergens || []).forEach(function (a) { allergens.appendChild(allergenRow(a, proposed)); });
       if (data.fragrance && (!data.allergens || !data.allergens.length)) allergens.appendChild(allergenRow());
       syncFrag();
     }
 
+    syncProposed(card);   // вдига черновата лента, ако има непотвърдени стойности
     return card;
   }
 
@@ -151,24 +187,37 @@
     return card;
   }
 
-  // --- карантина на извлечени стойности (Член 10: човек проверява всяко число) ---
-  // Ред, дошъл от извличане, е „непроверен“ и блокира изчислението, докато
-  // ползвателят не натисне „Проверих“ ИЛИ не редактира някое поле в реда.
-  function markUnverified(card) {
-    if (!card || card.dataset.unverified) return;
-    card.dataset.unverified = "1";
-    card.classList.add("unverified");
-    var badge = el("div", { class: "unverified-badge" },
-      '<span class="uv-tag">AI чернова — провери всяко число</span>');
-    badge.appendChild(el("button", { type: "button", class: "btn-ghost small uv-ok" }, "Проверих"));
-    card.insertBefore(badge, card.firstChild);
+  // --- карантина на ИЗВЛЕЧЕНИ СТОЙНОСТИ (Член 10: човек потвърждава всяка) ---
+  // Всяка стойност от извличане е ПРЕДЛОЖЕНИЕ (data-proposed): показва се
+  // маркирана като чернова, НЕ влиза в YAML-а и блокира /compute, докато човек
+  // не я потвърди (бутон „Потвърди“) или не я редактира/премахне спрямо източника.
+  function confirmBtn() {
+    return el("button", { type: "button", class: "btn-ghost small confirm-val",
+      title: "Потвърди тази стойност спрямо източника" }, "Потвърди");
   }
-  function clearUnverified(card) {
-    if (!card || !card.dataset.unverified) return;
-    delete card.dataset.unverified;
-    card.classList.remove("unverified");
-    var b = card.querySelector(".unverified-badge");
-    if (b) b.remove();
+  // Обновява черновата лента според това дали в реда още има непотвърдени стойности.
+  function syncProposed(card) {
+    if (!card) return;
+    var has = !!card.querySelector("[data-proposed]");
+    card.classList.toggle("unverified", has);
+    var badge = card.querySelector(".unverified-badge");
+    if (has && !badge) {
+      card.insertBefore(el("div", { class: "unverified-badge" },
+        '<span class="uv-tag">AI чернова — потвърди всяка стойност спрямо източника</span>'),
+        card.firstChild);
+    } else if (!has && badge) {
+      badge.remove();
+    }
+  }
+  // Сваля „предложение“ от един елемент (вход, съставка или алерген) и маха бутона.
+  function confirmValue(node) {
+    if (!node) return;
+    node.removeAttribute("data-proposed");
+    node.classList.remove("proposed");
+    var isRow = node.classList.contains("constituent-row") || node.classList.contains("allergen-row");
+    var scope = isRow ? node : ((node.closest && node.closest(".ing-inci-wrap")) || node.parentNode);
+    var btn = scope && scope.querySelector(".confirm-val");
+    if (btn) btn.remove();
   }
 
   // --- сериализация форма → YAML ---
@@ -206,9 +255,10 @@
       lines.push("  - name: " + yq(nm));
       lines.push("    dose_pct: " + dose);
 
-      if (card._composition) {                       // запазен състав от даташийта
+      var comp = readConstituents(card);             // многосъставен състав от даташийт
+      if (comp) {
         lines.push("    composition:");
-        card._composition.forEach(function (c) { lines.push(compLine(c)); });
+        comp.forEach(function (c) { lines.push(compLine(c)); });
         return;
       }
       var fragEl = card.querySelector(".ing-frag");
@@ -272,9 +322,10 @@
   function readCard(card) {
     var name = (card.querySelector(".ing-name") || {}).value || "";
     var dose = (card.querySelector(".ing-dose") || {}).value || "";
-    if (card._composition && card._composition.length) {
+    var comp = readConstituents(card);
+    if (comp) {
       return { name: name.trim(), dose: dose, fragrance: false, inci: "",
-        allergens: [], composition: card._composition };
+        allergens: [], composition: comp };
     }
     var frag = card.querySelector(".ing-frag");
     if (frag && frag.checked) {
@@ -361,8 +412,8 @@
     return fresh;
   }
   function finishAttach(card, model) {
+    model.proposed = true;   // данните идват от документ → чернова до потвърждение
     var fresh = replaceCard(card, model);
-    markUnverified(fresh);   // данните идват от документ → искат проверка
     toast("Допълнена съставка: " + (model.name || ""));
     fresh.scrollIntoView({ behavior: "smooth", block: "center" });
     focusFirstEmptyDose();
@@ -451,7 +502,9 @@
         return "attach";
       }
     }
-    markUnverified(appendIngredient(normalizeRm(rm)));  // нова съставка (или резерв)
+    var model = normalizeRm(rm);
+    model.proposed = true;            // извлечена стойност → чернова до потвърждение
+    appendIngredient(model);
     return "new";
   }
 
@@ -469,12 +522,26 @@
   });
 
   // махане на „invalid“ щом потребителят започне да пише доза;
-  // редакция на поле в непроверен ред = човек го е прегледал → сваляме картантината
+  // редакция на предложена стойност = потвърждение спрямо източника
   document.body.addEventListener("input", function (e) {
-    if (e.target && e.target.classList && e.target.classList.contains("ing-dose"))
-      e.target.classList.remove("invalid");
-    var uv = e.target && e.target.closest ? e.target.closest(".ingredient[data-unverified]") : null;
-    if (uv) clearUnverified(uv);
+    var t = e.target;
+    if (!t || !t.classList) return;
+    if (t.classList.contains("ing-dose")) t.classList.remove("invalid");
+    if (t.classList.contains("ing-inci") && t.hasAttribute("data-proposed")) {
+      confirmValue(t); syncProposed(t.closest(".ingredient"));
+    }
+    if (t.classList.contains("cst-name")) {
+      var row = t.closest(".constituent-row");
+      if (row && row.hasAttribute("data-proposed")) {
+        confirmValue(row); syncProposed(t.closest(".ingredient"));
+      }
+    }
+    if (t.classList.contains("al-name") || t.classList.contains("al-pct")) {
+      var arow = t.closest(".allergen-row");
+      if (arow && arow.hasAttribute("data-proposed")) {
+        confirmValue(arow); syncProposed(t.closest(".ingredient"));
+      }
+    }
   });
 
   // „Към“ селектите се опресняват при отваряне, за да отразяват текущите редове
@@ -484,9 +551,15 @@
 
   // делегиране на бутоните „Добави“ / „Добави всички“ (вмъкнати чрез fetch)
   document.body.addEventListener("click", function (e) {
-    // „Проверих“ → сваля карантината от реда
-    var uvok = e.target.closest ? e.target.closest(".uv-ok") : null;
-    if (uvok) { clearUnverified(uvok.closest(".ingredient")); return; }
+    // „Потвърди“ → сваля предложението от конкретната стойност (INCI вход или съставка)
+    var cv = e.target.closest ? e.target.closest(".confirm-val") : null;
+    if (cv) {
+      var card = cv.closest(".ingredient");
+      var container = cv.closest(".constituent-row") || cv.closest(".allergen-row");
+      confirmValue(container || card.querySelector(".ing-inci[data-proposed]"));
+      syncProposed(card);
+      return;
+    }
 
     // „Потвърждавам N аларми“ → разкрива скритите изходи (INCI, CPSR)
     var ack = e.target.closest ? e.target.closest("[data-ack-alarms]") : null;
@@ -641,13 +714,14 @@
       else { toast("Въведи доза за всяка съставка"); if (prob.el) prob.el.focus(); }
       return;
     }
-    // карантина: нито една непроверена (AI) стойност не минава към изчисление
-    var unv = document.querySelector('#ingredients .ingredient[data-unverified]');
-    if (unv) {
+    // карантина: нито една НЕПОТВЪРДЕНА (AI) стойност не минава към изчисление
+    var prop = document.querySelector('#ingredients [data-proposed]');
+    if (prop) {
       e.preventDefault();
-      toast("Потвърди извлечените стойности („Проверих“) или ги редактирай");
-      unv.scrollIntoView({ behavior: "smooth", block: "center" });
-      var ub = unv.querySelector(".uv-ok"); if (ub) ub.focus();
+      toast("Потвърди или премахни извлечените INCI стойности (бутон „Потвърди“) спрямо източника");
+      var pcard = prop.closest(".ingredient") || prop;
+      pcard.scrollIntoView({ behavior: "smooth", block: "center" });
+      var cb = pcard.querySelector(".confirm-val"); if (cb) cb.focus();
       return;
     }
     var y = buildYaml();

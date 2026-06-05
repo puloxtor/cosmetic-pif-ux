@@ -93,6 +93,59 @@ def test_extract_rejects_too_many_files():
     assert "много файлове" in r.text
 
 
+# Известният замърсен вход (правни бележки, адрес, спец-редове, page furniture),
+# смесен с реални материали — както се появи в реален даташийт.
+_CONTAMINATED = [
+    {"name": "VegeLight 1818", "dose_pct": "TODO", "composition": [
+        {"inci_name": "Prunus Amygdalus Dulcis Oil", "pct": 69.5},
+        {"inci_name": "Tocopherol", "pct": 0.5},
+        {"inci_name": "REACh Status Reg. EC 1907 2006 exempt", "pct": 6.255},
+        {"inci_name": "Country of origin: refined in Italy", "pct": 3.475},
+        {"inci_name": "Limit ppm Declaration limit", "pct": 2.085},
+        {"inci_name": "Am Mühlbach 38, 69412 Eberbach", "pct": 0.99},
+        {"inci_name": "C20:1 Gadoleinsäure", "pct": 1.2},
+        {"inci_name": "C22:1 Erukasäure", "pct": 0.8},
+        {"inci_name": "Seite 1 von 3", "pct": 0.5},
+        {"inci_name": "Tel +49 6271 Fax 12345", "pct": 0.3},
+        {"inci_name": "CI 77491", "pct": 0.2},
+    ]},
+    {"name": "Ricinusöl", "dose_pct": "TODO", "composition": [
+        {"inci_name": "Ricinus Communis Seed Oil", "pct": 100},
+        {"inci_name": "Declaration limit according to Annex V", "pct": 5.0},
+    ]},
+]
+_BOILERPLATE = ["REACh", "Country of origin", "Limit ppm", "Declaration limit",
+                "Mühlbach", "Gadoleinsäure", "Erukasäure", "C20:1", "C22:1",
+                "Seite", "Fax", "Annex"]
+_REAL = {"Prunus Amygdalus Dulcis Oil", "Tocopherol", "CI 77491",
+         "Ricinus Communis Seed Oil"}
+
+
+def test_extraction_strips_boilerplate_keeps_real_materials():
+    """Замърсеният вход не бива да става съставки — само реалните INCI остават."""
+    import copy
+    rms, dropped = engine.filter_candidates(copy.deepcopy(_CONTAMINATED))
+    kept = {c["inci_name"] for rm in rms for c in rm["composition"]}
+    assert kept == _REAL                         # точно реалните материали
+    for bad in _BOILERPLATE:
+        assert all(bad not in c["inci_name"]      # никаква боклук-фраза не остава
+                   for rm in rms for c in rm["composition"]), bad
+    assert dropped == 9                           # 7 в първия + 2 във втория документ
+
+
+def test_extract_route_never_emits_boilerplate_as_ingredient(monkeypatch):
+    """През /extract: черновата не съдържа правни/адресни/спец редове."""
+    monkeypatch.setattr(engine, "extract_drafts",
+                        lambda *a, **k: ([dict(_CONTAMINATED[0])], []))
+    r = client.post("/extract", data={"type": "composition", "ocr": "never"},
+                    files={"files": ("datasheet.pdf", b"%PDF dummy", "application/pdf")})
+    assert r.status_code == 200
+    assert "Prunus Amygdalus Dulcis Oil" in r.text          # реалната съставка остава
+    for bad in _BOILERPLATE:
+        assert bad not in r.text, bad                        # боклукът не достига UI/съхранение
+    assert "не приличат на INCI" in r.text                   # бележка за пропуснатите редове
+
+
 def test_compute_sample_default_works():
     r = client.post("/compute", data={"formula": SAMPLE_FORMULA})
     assert r.status_code == 200
