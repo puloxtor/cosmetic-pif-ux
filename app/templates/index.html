@@ -83,13 +83,18 @@
       директно; снимка/сканиран минава през AI-зрение и иска
       <code>ANTHROPIC_API_KEY</code>. След това добавяш съставките във формулата
       с едно кликане — <strong>провери всяко число</strong>.</p>
-      <form hx-post="/extract" hx-target="#draft" hx-encoding="multipart/form-data" hx-indicator="#spin2">
-        <label class="field">Файлове
-          <input type="file" name="files" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple required>
-        </label>
+      <form id="extract-form" onsubmit="return false">
+        <div id="dropzone" class="dropzone" role="button" tabindex="0"
+             aria-label="Избери файлове или ги пусни тук">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
+          <p><strong>Пусни файлове тук</strong> или <span class="link">избери от компютъра</span></p>
+          <p class="field-hint">PDF, PNG или JPG — може <strong>няколко наведнъж</strong></p>
+          <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple hidden>
+        </div>
+        <ul id="filelist" class="filelist" role="list"></ul>
         <div class="row">
           <label class="field">Вид документ
-            <select name="type">
+            <select id="ex-type">
               <option value="auto">Автоматично</option>
               <option value="composition">Композиция (състав)</option>
               <option value="fragrance">Аромат (алергени)</option>
@@ -98,7 +103,7 @@
             <small class="field-hint">Остави „Автоматично“, ако не си сигурна.</small>
           </label>
           <label class="field">Разчитане
-            <select name="ocr">
+            <select id="ex-ocr">
               <option value="auto">Автоматично</option>
               <option value="force">AI-зрение (за снимки)</option>
               <option value="never">Само текст (без AI)</option>
@@ -106,9 +111,9 @@
             <small class="field-hint">„AI-зрение“ иска ключ и е платено.</small>
           </label>
         </div>
-        <button type="submit" class="btn-secondary">
+        <button type="button" id="extract-btn" class="btn-secondary">
           Извлечи чернова
-          <span id="spin2" class="htmx-indicator" aria-live="polite">чета…</span>
+          <span id="spin2" class="spin" hidden aria-live="polite">чета…</span>
         </button>
       </form>
       <div id="draft" aria-live="polite"></div>

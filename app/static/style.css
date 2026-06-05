@@ -163,7 +163,25 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .err-box strong { color:var(--err); }
 .err-box p { margin:.4rem 0 0; }
 
+/* зона за качване на файлове */
+.dropzone { border:2px dashed #cdd9d0; border-radius:var(--radius); background:var(--surface-2);
+  padding:var(--s5) var(--s4); text-align:center; color:var(--muted); cursor:pointer;
+  transition:border-color .18s var(--ease), background .18s var(--ease); }
+.dropzone:hover, .dropzone:focus-visible { border-color:var(--primary); background:var(--primary-soft); outline:none; }
+.dropzone.drag { border-color:var(--primary); background:var(--primary-soft); color:var(--primary-d); }
+.dropzone svg { color:var(--primary-d); }
+.dropzone p { margin:.3rem 0 0; font-size:.88rem; }
+.dropzone .link { color:var(--primary-d); text-decoration:underline; font-weight:600; }
+.filelist { list-style:none; margin:var(--s3) 0 0; padding:0; display:flex; flex-direction:column; gap:.35rem; }
+.file-chip { display:flex; align-items:center; gap:var(--s2); background:var(--surface);
+  border:1px solid var(--line); border-radius:var(--radius-sm); padding:.35rem .35rem .35rem .6rem; }
+.fc-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.85rem; }
+.fc-size { color:var(--muted); font-size:.74rem; flex:0 0 auto; }
+.spin { color:var(--muted); font-size:.82rem; margin-left:.4rem; }
+
 /* извлечени документи (чернова) */
+.draft-intro { font-size:.86rem; color:var(--muted); margin:0 0 var(--s2); }
+.btn-primary.small { padding:.4rem .8rem; min-height:0; font-size:.84rem; }
 #draft { margin-top:var(--s3); display:flex; flex-direction:column; gap:var(--s3); }
 .doc-card { border:1px solid var(--line); border-radius:var(--radius-sm); padding:var(--s3) var(--s4); background:var(--surface); }
 .doc-head { display:flex; align-items:center; gap:.45rem; color:var(--ink); font-size:.92rem; margin-bottom:var(--s2); }

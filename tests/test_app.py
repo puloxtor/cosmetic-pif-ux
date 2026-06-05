@@ -82,8 +82,9 @@ def test_extract_endpoint_returns_structured_draft(monkeypatch):
                     files={"files": ("x.pdf", b"%PDF-1.4 dummy", "application/pdf")})
     assert r.status_code == 200
     assert "Sweet Almond Oil" in r.text          # дружелюбен преглед
-    assert "Добави" in r.text                     # бутон за добавяне
-    assert 'application/json' in r.text           # вграден JSON за един клик
+    assert "data-add-all" in r.text               # бутон „добави всички“
+    assert "data-add-one" in r.text               # бутон за една съставка
+    assert "data-rms=" in r.text                  # структурирани данни за един клик
     assert "провери числата" in r.text            # бележки от сканирането
 
 

@@ -244,15 +244,17 @@
   }
 
   // --- добавяне от извлечена чернова ---
-  function readDraft(id) {
-    var node = document.getElementById(id);
-    if (!node) return [];
-    try { return JSON.parse(node.textContent); } catch (e) { return []; }
+  function rmsOf(node) {
+    var card = node.closest ? node.closest(".doc-card") : null;
+    if (!card) return [];
+    try { return JSON.parse(card.getAttribute("data-rms") || "[]"); } catch (e) { return []; }
   }
   function addRms(rms) {
     if (!rms || !rms.length) { toast("Няма какво да добавя"); return; }
     rms.forEach(function (rm) { appendIngredient(normalizeRm(rm)); });
     toast(rms.length === 1 ? "Добавена 1 съставка" : "Добавени " + rms.length + " съставки");
+    var box = document.getElementById("ingredients");
+    if (box && box.lastElementChild) box.lastElementChild.scrollIntoView({ behavior: "smooth", block: "center" });
     focusFirstEmptyDose();
   }
 
@@ -275,13 +277,13 @@
       e.target.classList.remove("invalid");
   });
 
-  // делегиране на бутоните „Добави“ / „Добави всички“ (вмъкват се от HTMX)
+  // делегиране на бутоните „Добави“ / „Добави всички“ (вмъкнати чрез fetch)
   document.body.addEventListener("click", function (e) {
     var all = e.target.closest ? e.target.closest("[data-add-all]") : null;
-    if (all) { addRms(readDraft(all.getAttribute("data-add-all"))); return; }
-    var one = e.target.closest ? e.target.closest("[data-add-from]") : null;
+    if (all) { addRms(rmsOf(all)); return; }
+    var one = e.target.closest ? e.target.closest("[data-add-one]") : null;
     if (one) {
-      var rms = readDraft(one.getAttribute("data-add-from"));
+      var rms = rmsOf(one);
       var i = parseInt(one.getAttribute("data-index"), 10) || 0;
       if (rms[i]) addRms([rms[i]]);
       return;
@@ -301,6 +303,90 @@
         s.removeAllRanges();
       }
     }
+  });
+
+  // ---------- качване на документи: мулти-файл + drag&drop + fetch ----------
+  var selectedFiles = [];
+
+  function fmtSize(b) {
+    if (b < 1024) return b + " B";
+    if (b < 1048576) return Math.round(b / 1024) + " KB";
+    return (b / 1048576).toFixed(1) + " MB";
+  }
+  function renderFileList() {
+    var ul = document.getElementById("filelist");
+    if (!ul) return;
+    ul.innerHTML = "";
+    selectedFiles.forEach(function (f, idx) {
+      var li = el("li", { class: "file-chip" });
+      li.appendChild(el("span", { class: "fc-name", title: escAttr(f.name) }, escHtml(f.name)));
+      li.appendChild(el("span", { class: "fc-size" }, fmtSize(f.size)));
+      var x = el("button", { type: "button", class: "icon-btn", "aria-label": "Премахни файла" }, SVG_TRASH);
+      x.addEventListener("click", function () { selectedFiles.splice(idx, 1); renderFileList(); });
+      li.appendChild(x);
+      ul.appendChild(li);
+    });
+  }
+  function addFiles(fileList) {
+    Array.prototype.forEach.call(fileList || [], function (f) {
+      var dup = selectedFiles.some(function (g) { return g.name === f.name && g.size === f.size; });
+      if (!dup) selectedFiles.push(f);
+    });
+    renderFileList();
+  }
+  function setExtracting(on) {
+    var btn = document.getElementById("extract-btn");
+    var sp = document.getElementById("spin2");
+    if (btn) btn.disabled = on;
+    if (sp) sp.hidden = !on;
+  }
+  function runExtract() {
+    var draft = document.getElementById("draft");
+    if (!selectedFiles.length) { toast("Избери поне един файл"); return; }
+    var fd = new FormData();
+    selectedFiles.forEach(function (f) { fd.append("files", f, f.name); });
+    var t = document.getElementById("ex-type"), o = document.getElementById("ex-ocr");
+    fd.append("type", t ? t.value : "auto");
+    fd.append("ocr", o ? o.value : "auto");
+    setExtracting(true);
+    if (draft) draft.innerHTML = '<p class="muted">Чета документите…</p>';
+    fetch("/extract", { method: "POST", body: fd })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+      .then(function (html) {
+        if (!draft) return;
+        draft.innerHTML = html;
+        draft.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      })
+      .catch(function (err) {
+        if (draft) draft.innerHTML = '<div class="alarms err-box" role="alert">' +
+          '<strong>Възникна проблем при качването</strong>' +
+          '<p>Опитай пак. Ако продължава — провери връзката или размера на файловете (' +
+          escHtml(err.message) + ").</p></div>";
+      })
+      .finally(function () { setExtracting(false); });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var dz = document.getElementById("dropzone");
+    var input = document.getElementById("file-input");
+    if (dz && input) {
+      dz.addEventListener("click", function () { input.click(); });
+      dz.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+      });
+      input.addEventListener("change", function () { addFiles(input.files); input.value = ""; });
+      ["dragenter", "dragover"].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add("drag"); });
+      });
+      ["dragleave", "drop"].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove("drag"); });
+      });
+      dz.addEventListener("drop", function (e) {
+        if (e.dataTransfer) addFiles(e.dataTransfer.files);
+      });
+    }
+    var btn = document.getElementById("extract-btn");
+    if (btn) btn.addEventListener("click", runExtract);
   });
 
   // Преди заявката: валидирай дозите и генерирай YAML от формата.

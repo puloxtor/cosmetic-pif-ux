@@ -1,6 +1,8 @@
 <div class="draft">
+  <p class="draft-intro">Прегледай извлеченото и <strong>добави във формулата</strong> —
+  цяло наведнъж или по една съставка. Провери всяко число.</p>
   {% for doc in documents %}
-  <div class="doc-card">
+  <div class="doc-card" data-rms='{{ (doc.rms or [])|tojson }}'>
     <div class="doc-head">
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
       <strong>{{ doc.filename }}</strong>
@@ -26,12 +28,12 @@
       {% endif %}
 
       {% if doc.rms %}
-        {% set did = "draft-" ~ loop.index %}
         <div class="doc-actions">
-          <button type="button" class="btn-secondary small" data-add-all="{{ did }}">
+          <button type="button" class="btn-primary small" data-add-all>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             Добави всички ({{ doc.rms|length }})
           </button>
-          <span class="field-hint">или добави поотделно ↓</span>
+          <span class="field-hint">или по една ↓</span>
         </div>
         <ul class="draft-list" role="list">
           {% for rm in doc.rms %}
@@ -47,11 +49,10 @@
                 {% if rm.dose_pct and rm.dose_pct != "TODO" %} · {{ rm.dose_pct }}%{% else %} · доза: въведи{% endif %}
               </span>
             </div>
-            <button type="button" class="btn-ghost small" data-add-from="{{ did }}" data-index="{{ loop.index0 }}">Добави</button>
+            <button type="button" class="btn-ghost small" data-add-one data-index="{{ loop.index0 }}">Добави</button>
           </li>
           {% endfor %}
         </ul>
-        <script type="application/json" id="{{ did }}">{{ doc.rms|tojson }}</script>
       {% else %}
         <p class="muted">Няма разпознати съставки в този документ. Опитай с друг
         вид/разчитане или въведи ръчно.</p>
