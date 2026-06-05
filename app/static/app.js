@@ -67,7 +67,7 @@
     var row = el("div", { class: "allergen-row", role: "listitem" });
     row.appendChild(el("label", { class: "mini" }, 'Алерген<input type="text" class="al-name" value="' +
       escAttr(a && a.name) + '" placeholder="напр. Limonene">'));
-    row.appendChild(el("label", { class: "mini" }, '% в аромата<input type="number" class="al-pct" step="0.01" min="0" inputmode="decimal" value="' +
+    row.appendChild(el("label", { class: "mini" }, '% в аромата<input type="number" class="al-pct" step="any" min="0" inputmode="decimal" value="' +
       escAttr(a && a.pct) + '">'));
     var del = el("button", { type: "button", class: "icon-btn", "aria-label": "Премахни алергена" }, SVG_TRASH);
     del.addEventListener("click", function () { row.remove(); });
@@ -86,7 +86,7 @@
 
     var doseEmpty = !isNum(data.dose);
     card.appendChild(el("label", { class: "field narrow" }, 'Доза %<input type="number" class="ing-dose' +
-      (doseEmpty && (data.name) ? " invalid" : "") + '" step="0.01" min="0" inputmode="decimal" value="' +
+      (doseEmpty && (data.name) ? " invalid" : "") + '" step="any" min="0" inputmode="decimal" value="' +
       escAttr(data.dose) + '">'));
 
     // Прост едно-INCI вход (за ръчни и едносъставни извлечени суровини).
@@ -120,7 +120,7 @@
       var fragWrap = el("div", { class: "frag-wrap" });
       var tog = el("label", { class: "inline frag-toggle" },
         '<input type="checkbox" class="ing-frag"' + (data.fragrance ? " checked" : "") +
-        '> Това е аромат / парфюм');
+        '> Аромат/парфюм (носи алергени)');
       fragWrap.appendChild(tog);
       var allergens = el("div", { class: "allergens", role: "list" });
       var addAl = el("button", { type: "button", class: "btn-ghost small" }, "+ Добави алерген");

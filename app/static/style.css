@@ -142,6 +142,9 @@ tr.total td { font-weight:700; border-top:2px solid var(--line); border-bottom:n
 .status.ok { color:var(--ok); background:var(--ok-soft); }
 .status.warn { color:var(--warn); background:var(--warn-soft); }
 
+table.allergens .yes { display:inline-flex; align-items:center; gap:.3rem;
+  color:var(--ok); font-weight:600; }
+
 .inci-head { display:flex; justify-content:flex-end; margin-bottom:.3rem; }
 pre.inci, pre.draftyaml, pre.cpsr {
   white-space:pre-wrap; word-break:break-word; background:var(--surface-2);

@@ -34,11 +34,37 @@
   </p>
   {% endif %}
 
-  <h4>Алергени за деклариране ({{ r.declared|length }})</h4>
-  <p>{% if r.declared %}{{ r.declared|join(", ") }}{% else %}<span class="muted">няма</span>{% endif %}</p>
-  <details class="explain"><summary>Какво е това?</summary>
-    <p>Член 19 изисква тези съставки от ароматите да са изброени на етикета,
-    щом надвишават прага (0,001% за остава-върху / 0,01% за отмива-се).</p>
+  <h4>Алергени — автоматична преценка ({{ r.declared|length }} за деклариране)</h4>
+  {% if r.allergens %}
+  <table class="allergens">
+    <thead><tr>
+      <th>Алерген</th><th class="num">% в продукта</th>
+      <th class="num">Праг</th><th>В INCI?</th>
+    </tr></thead>
+    <tbody>
+      {% for a in r.allergens %}
+      <tr>
+        <td>{{ a.name }}{% if a.cas %} <span class="muted">({{ a.cas }})</span>{% endif %}</td>
+        <td class="num">{{ "%.5f"|format(a.conc_pct) }}</td>
+        <td class="num">{{ "%.3f"|format(a.threshold_pct) }}</td>
+        <td>
+          {% if a.declared %}
+          <span class="yes"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Да</span>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p><span class="muted">няма ароматни алергени във формулата</span></p>
+  {% endif %}
+  <details class="explain"><summary>Как се изчислява?</summary>
+    <p>% в продукта = доза на аромата × масовия дял на алергена в него.
+    Член 19 изисква алергенът да е изброен в INCI, щом надвишава прага
+    (0,001% за остава-върху / 0,01% за отмива-се).</p>
   </details>
 
   <h4>Генериран INCI (Член 19)</h4>

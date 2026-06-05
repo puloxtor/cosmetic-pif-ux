@@ -52,6 +52,41 @@ def test_compute_sample_default_works():
     assert "Limonene" in r.text  # declared allergen from the sample parfum
 
 
+def test_allergen_determination_table_shows_the_math():
+    """Резултатите показват изчислената концентрация, прага и решението за INCI."""
+    r = client.post("/compute", data={"formula": SAMPLE_FORMULA})
+    assert r.status_code == 200
+    assert "% в продукта" in r.text and "В INCI?" in r.text  # колоните на таблицата
+    assert "0.12000" in r.text  # Limonene концентрация в продукта
+    assert "0.04500" in r.text  # Linalool концентрация в продукта
+    assert "0.001" in r.text    # прагът за leave-on
+    assert "5989-27-5" in r.text  # CAS, взет от суровината
+
+
+def test_precise_allergen_value_accepted_and_computed():
+    """Стойност под 0.01 (напр. 0.007) минава и се изчислява коректно."""
+    formula = """product:
+  name: "Precise"
+  product_type: "leave-on"
+raw_materials:
+  - name: "Parfum"
+    dose_pct: 3.0
+    is_fragrance: true
+    allergens:
+      - { name: "Citral", pct_in_fragrance: 0.007 }
+"""
+    r = client.post("/compute", data={"formula": formula})
+    assert r.status_code == 200
+    # 3% × 0.007% = 0.00021% в продукта; под прага 0.001 → НЕ влиза в INCI.
+    assert "0.00021" in r.text
+
+
+def test_input_steps_allow_any_precision():
+    """Полетата за доза/алерген приемат произволна точност (step=any)."""
+    r = client.get("/")
+    assert 'id="p-amount" value="2.0" step="any"' in r.text
+
+
 def test_compute_bad_yaml_is_graceful():
     r = client.post("/compute", data={"formula": "not: a: valid: product"})
     assert r.status_code == 200
