@@ -1,7 +1,9 @@
 /* jsdom тестове за клиентската логика в app/static/app.js (без браузър).
-   Покрива document-first консолидирането: рецепта → редове; подкрепящи документи →
-   авто-съпоставяне и допълване; алергените остават за потвърждение; и че името на
-   суровина НИКОГА не изтича като INCI (грешката, която разваляше INCI списъка).
+   Покрива document-first консолидирането: рецепта → редове; подкрепящите документи
+   се обвързват към ред чрез AI картата от /match (тук я МОКВАМЕ — генерализира за
+   произволни комплекти, не привързваме теста към конкретни файлове); съставът се
+   авто-приема, алергените остават за потвърждение; и че името на суровина НИКОГА не
+   изтича като INCI (грешката, която разваляше INCI списъка).
 
    Стартиране:  npm install && npm test   (иска devDependency „jsdom“). */
 import { test } from "node:test";
@@ -14,7 +16,7 @@ import { JSDOM } from "jsdom";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APPJS = fs.readFileSync(path.join(HERE, "..", "app", "static", "app.js"), "utf8");
 
-function boot() {
+function boot(matchResponder) {
   const dom = new JSDOM(`<!doctype html><html><body>
     <input id="p-name" value="Beard Oil">
     <select id="p-type"><option value="leave-on" selected>leave-on</option></select>
@@ -27,9 +29,18 @@ function boot() {
     <div id="toast" hidden></div>
   </body></html>`, { runScripts: "outside-only", pretendToBeVisual: true });
   const { window } = dom;
-  // Element.scrollIntoView не съществува в jsdom — добавяме no-op, за да не гърми.
   window.HTMLElement.prototype.scrollIntoView = function () {};
-  window.__PIF_TEST__ = true;       // активира тестовата кукичка в края на app.js
+  // Мок на /match — връща каквото тестът зададе (AI частта е сървърна, тествана в Python).
+  window.fetch = function (url, opts) {
+    if (String(url).indexOf("/match") !== -1) {
+      let body = {};
+      try { body = JSON.parse(opts.body); } catch (e) {}
+      const res = matchResponder ? matchResponder(body) : { available: false, matches: [] };
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(res) });
+    }
+    return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+  };
+  window.__PIF_TEST__ = true;
   window.eval(APPJS);
   return window;
 }
@@ -43,83 +54,72 @@ function intakeHTML(docs) {
   return `<ul class="intake-list">${li}</ul><div class="intake-flags" hidden></div>`;
 }
 
-// Beard Oil комплект (docs/UX_INTAKE_SPEC.md §1): рецепта + по един подкрепящ
-// документ на суровина + аромат/IFRA, плюс една суровина БЕЗ съответен документ.
-const DOCS = [
+const q = (w, sel) => Array.from(w.document.querySelectorAll(sel));
+
+// Beard Oil комплект: рецепта (на български) + по един подкрепящ документ + аромат,
+// плюс една суровина БЕЗ документ (→ непълен ред). Имената нарочно са разноезични.
+const SET = [
   { role: "formula", filename: "recipe.jpg", rms: [
-    { name: "Almond oil", dose_pct: 69.5 },
+    { name: "Бадемово масло", dose_pct: 69.5 },
     { name: "Peace fragrance", dose_pct: 3 },
-    { name: "Mystery wax", dose_pct: 27.5 },   // няма съответен документ → непълен ред
+    { name: "Mystery wax", dose_pct: 27.5 },     // няма документ → непълен ред
   ]},
   { role: "ingredient", filename: "Almond Oil.pdf", rms: [
-    { name: "Almond Oil", composition: [{ inci_name: "Prunus Amygdalus Dulcis Oil", pct: 100 }] },
-  ]},
+    { name: "Almond Oil", composition: [{ inci_name: "Prunus Amygdalus Dulcis Oil", pct: 100 }] }]},
   { role: "fragrance", filename: "Parfum_Peace.pdf", rms: [
-    { name: "Peace fragrance", is_fragrance: true, allergens: [
+    { name: "Peace", is_fragrance: true, allergens: [
       { name: "Limonene", pct_in_fragrance: 4.0 },
-      { name: "Linalool", pct_in_fragrance: 1.5 },
-    ]},
-  ]},
+      { name: "Linalool", pct_in_fragrance: 1.5 }]}]},
 ];
 
-test("рецептата дава редовете; документите ги допълват; рискът (алергени) се пази", () => {
-  const w = boot();
-  const T = w.__PIF_TEST__;
-  assert.ok(T && T.consolidateExtract && T.buildYaml, "тестовата кукичка е изложена");
+// supportDocs ред: Almond=doc0, Parfum=doc1; редове: 0=Бадемово,1=Peace,2=Mystery.
+const goodMap = () => ({ available: true, matches: [
+  { doc: 0, row: 0, matched: true, confidence: 0.99, why: "almond=бадемово" },
+  { doc: 1, row: 1, matched: true, confidence: 0.95, why: "parfum=peace" },
+]});
 
-  w.document.getElementById("draft").innerHTML = intakeHTML(DOCS);
-  T.consolidateExtract();
+test("AI картата обвързва документ→ред многоезично (Almond.pdf → „Бадемово масло“)", async () => {
+  const w = boot(goodMap);
+  w.document.getElementById("draft").innerHTML = intakeHTML(SET);
+  await w.__PIF_TEST__.consolidateExtract();
 
-  const d = w.document;
-  const rows = d.querySelectorAll("#ingredients .ingredient");
-  assert.equal(rows.length, 3, "3 реда, посети от рецептата");
-
-  const incis = Array.from(d.querySelectorAll("#ingredients .ing-inci")).map((i) => i.value);
+  assert.equal(q(w, "#ingredients .ingredient").length, 3, "3 реда от рецептата");
+  const incis = q(w, "#ingredients .ing-inci").map((i) => i.value);
   assert.ok(incis.includes("Prunus Amygdalus Dulcis Oil"),
-    "INCI на бадема е допълнен от съответния документ");
-
-  // суровина без документ → точно един „непълен“ ред (блокира изчислението)
-  assert.equal(d.querySelectorAll("#ingredients .ingredient.incomplete").length, 1,
-    "точно един непълен ред (Mystery wax)");
-
-  // алергените от аромата са ПРЕДЛОЖЕНИЕ (рисково → искат потвърждение)
-  assert.ok(d.querySelectorAll("#ingredients .allergen-row[data-proposed]").length >= 2,
-    "извлечените алергени остават за потвърждение");
+    "българският ред получи INCI от английския документ");
+  assert.equal(q(w, "#ingredients .ingredient.incomplete").length, 1,
+    "само суровината без документ е непълна");
+  assert.ok(q(w, "#ingredients .allergen-row[data-proposed]").length >= 2,
+    "алергените остават за потвърждение");
 });
 
-test("buildYaml: реален INCI, без изтичане на име, непълният ред се пропуска", () => {
-  const w = boot();
-  const T = w.__PIF_TEST__;
-  w.document.getElementById("draft").innerHTML = intakeHTML(DOCS);
-  T.consolidateExtract();
+test("buildYaml: реален INCI, без изтичане на име, непълният ред се пропуска", async () => {
+  const w = boot(goodMap);
+  w.document.getElementById("draft").innerHTML = intakeHTML(SET);
+  await w.__PIF_TEST__.consolidateExtract();
 
-  const y = T.buildYaml();
-  assert.ok(y.includes("Prunus Amygdalus Dulcis Oil"), "YAML съдържа реалния INCI");
-  assert.ok(y.includes("is_fragrance: true") && y.includes("Limonene"),
-    "ароматът се записва с алергените си");
-  // ключовата регресия: името на суровината НЕ бива да става inci_name
-  assert.ok(!y.includes('inci_name: "Mystery wax"'),
-    "името на суровина без INCI не изтича като INCI");
-  assert.ok(!y.includes('inci_name: "Almond oil"'),
-    "името от рецептата не се ползва вместо реалния INCI");
-  // непълен ред не се сериализира изобщо (енджинът не приема суровина без състав)
-  assert.ok(!y.includes('name: "Mystery wax"'),
-    "непълният ред изобщо не влиза в YAML");
+  const y = w.__PIF_TEST__.buildYaml();
+  assert.ok(y.includes("Prunus Amygdalus Dulcis Oil"), "реалният INCI присъства");
+  assert.ok(y.includes("is_fragrance: true") && y.includes("Limonene"), "ароматът с алергените");
+  assert.ok(!y.includes('inci_name: "Бадемово масло"'), "българското име НЕ става INCI");
+  assert.ok(!y.includes('inci_name: "Mystery wax"'), "името на ред без INCI не изтича");
+  assert.ok(!y.includes('name: "Mystery wax"'), "непълният ред изобщо не влиза в YAML");
 });
 
-test("състав (oil/blend) се авто-приема — без карантина за състава", () => {
-  const w = boot();
-  const T = w.__PIF_TEST__;
-  w.document.getElementById("draft").innerHTML = intakeHTML([
-    { role: "formula", filename: "recipe.jpg", rms: [{ name: "Almond oil", dose_pct: 100 }] },
-    { role: "ingredient", filename: "Almond Oil.pdf", rms: [
-      { name: "Almond Oil", composition: [{ inci_name: "Prunus Amygdalus Dulcis Oil", pct: 100 }] }]},
-  ]);
-  T.consolidateExtract();
-  const d = w.document;
-  // съставът/INCI не носи data-proposed (рисково = само алергени)
-  assert.equal(d.querySelectorAll("#ingredients .ing-inci[data-proposed]").length, 0,
-    "извлеченият състав е авто-приет");
-  assert.equal(d.querySelectorAll("#ingredients .ingredient.incomplete").length, 0,
-    "бадемът е допълнен → няма непълни редове");
+test("съставът се авто-приема (без карантина) — рисково = само алергените", async () => {
+  const w = boot(goodMap);
+  w.document.getElementById("draft").innerHTML = intakeHTML(SET);
+  await w.__PIF_TEST__.consolidateExtract();
+  assert.equal(q(w, "#ingredients .ing-inci[data-proposed]").length, 0, "INCI авто-приет");
+  assert.equal(q(w, "#ingredients .constituent-row[data-proposed]").length, 0, "съставът авто-приет");
+});
+
+test("без AI (available:false) пада към евристика и предупреждава за ключа", async () => {
+  const w = boot(() => ({ available: false, matches: [], note: "no key" }));
+  w.document.getElementById("draft").innerHTML = intakeHTML(SET);
+  await w.__PIF_TEST__.consolidateExtract();
+  const flags = w.document.querySelector("#draft .intake-flags");
+  assert.ok(flags && !flags.hidden, "флаговете са показани");
+  assert.ok(flags.textContent.includes("AI съпоставяне недостъпно"),
+    "предупреждение за липсващ ANTHROPIC_API_KEY");
 });

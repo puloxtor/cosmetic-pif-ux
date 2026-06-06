@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import engine, intake
+from . import engine, intake, matching
 
 BASE = Path(__file__).parent
 app = FastAPI(title="Cosmetic PIF/CPSR UX")
@@ -129,6 +129,23 @@ async def extract(request: Request,
     return templates.TemplateResponse(request, "_draft.html", {
         "documents": documents,
     })
+
+
+@app.post("/match")
+async def match(request: Request):
+    """Документи → ред от рецептата (AI ПРЕДЛОЖЕНИЕ; човек потвърждава на гейта).
+
+    JSON вход {rows, docs} → JSON {available, matches, model, note?}. Никога не дава
+    500: при липсващ ключ/грешка връща available=False, за да падне UX-ът към
+    простата евристика. Самото съпоставяне е в app/matching.py.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    rows = payload.get("rows") or []
+    docs = payload.get("docs") or []
+    return matching.match_documents(rows, docs)
 
 
 @app.post("/compute", response_class=HTMLResponse)

@@ -548,6 +548,89 @@
     return replaceCard(card, model);
   }
 
+  // INCI/алергени, които документът удостоверява — вход за AI съпоставянето.
+  function docInciList(d) {
+    var inci = [], al = [];
+    (d.rms || []).forEach(function (rm) {
+      if (rm.is_fragrance) (rm.allergens || []).forEach(function (a) { if (a && a.name) al.push(a.name); });
+      (rm.composition || []).forEach(function (c) { if (c && c.inci_name) inci.push(c.inci_name); });
+    });
+    return { inci: inci, allergens: al };
+  }
+  // Живите редове на формата като {i, name} (вход за съпоставянето; редът = индекс).
+  function rowList() {
+    var rows = [];
+    document.querySelectorAll("#ingredients .ingredient").forEach(function (card, i) {
+      rows.push({ i: i, name: readCard(card).name || "" });
+    });
+    return rows;
+  }
+  // Допълва нов ред от документ, който не е съпоставен към съществуващ.
+  function addDocAsNewRow(rm, filename) {
+    var model = normalizeRm(rm);
+    model.proposed = false;
+    model.allergensProposed = !!model.fragrance;   // нов ароматен ред → потвърди алергените
+    model.doc = filename;
+    appendIngredient(model);
+  }
+
+  var MATCH_HIGH = 0.6;   // под този доверителен праг → допълваме, но маркираме за проверка
+
+  // Прилага AI картата „документ → ред“. matches: [{doc,row,matched,confidence,why}],
+  // doc = индекс в supportDocs, row = индекс в #ingredients (или -1).
+  function applyMatchMap(supportDocs, matches, flags) {
+    var byDoc = {};
+    (matches || []).forEach(function (m) { byDoc[m.doc] = m; });
+    supportDocs.forEach(function (d, di) {
+      var m = byDoc[di];
+      var hasMatch = !!(m && m.matched && m.row >= 0);
+      var matched = 0, made = 0, rowName = "";
+      d.rms.forEach(function (rm) {
+        var live = hasMatch ? document.querySelectorAll("#ingredients .ingredient")[m.row] : null;
+        if (live) { rowName = readCard(live).name || ""; autoAttach(live, rm, d.filename); matched++; }
+        else { addDocAsNewRow(rm, d.filename); made++; }
+      });
+      if (matched) {
+        var pct = (m.confidence != null) ? " (" + Math.round(m.confidence * 100) + "%)" : "";
+        var low = (m.confidence != null && m.confidence < MATCH_HIGH);
+        setDocStatus(d.el, "→ ред «" + rowName + "»" + pct, low ? "warn" : "ok");
+        if (low) flags.push("Провери съответствието: „" + d.filename + "“ → ред «" + rowName + "» (несигурно).");
+      } else {
+        setDocStatus(d.el, made + " нов(и)", "warn");
+        flags.push("„" + d.filename + "“ не съвпадна с ред — добавен е като нов (провери дозата).");
+      }
+    });
+  }
+
+  // Резервен вариант без ключ: проста евристика по име (ограничена при различни езици).
+  function applyHeuristic(supportDocs, flags) {
+    supportDocs.forEach(function (d) {
+      var matched = 0, made = 0, rowName = "";
+      d.rms.forEach(function (rm) {
+        var card = matchExistingRow(rm);
+        if (card) { rowName = readCard(card).name || ""; autoAttach(card, rm, d.filename); matched++; }
+        else { addDocAsNewRow(rm, d.filename); made++; }
+      });
+      setDocStatus(d.el, matched ? ("→ ред «" + rowName + "»") : (made + " нов(и)"), matched ? "ok" : "warn");
+      if (made && !matched)
+        flags.push("„" + d.filename + "“ не съвпадна с ред — добавен е като нов (провери дозата).");
+    });
+  }
+
+  // Финал: маркирай редовете без INCI, покажи флаговете и фокусирай първата празна доза.
+  function finishConsolidation(flags, usableCount) {
+    document.querySelectorAll("#ingredients .ingredient").forEach(syncIncomplete);
+    var incompletes = document.querySelectorAll("#ingredients .ingredient.incomplete").length;
+    if (incompletes)
+      flags.push(incompletes + " ред(а) без INCI — добави документ за тях или въведи INCI ръчно.");
+    renderIntakeFlags(flags);
+    if (usableCount) toast("Готово — прегледай таблицата и потвърди алергените");
+    focusFirstEmptyDose();
+  }
+
+  // Документ-първо консолидиране: рецептата дава редовете; всеки подкрепящ документ
+  // се съпоставя към своя ред чрез AI (многоезично, по INCI в документа) и го допълва.
+  // Връща Promise — извличането изчаква да приключи. Виж docs/UX_INTAKE_SPEC.md §2.
   function consolidateExtract() {
     var docs = collectDocs();
     var usable = docs.filter(function (d) { return !d.error && d.rms.length; });
@@ -568,50 +651,39 @@
       });
     }
 
-    // 2) Подкрепящи документи → авто-съпоставяне към ред + допълване.
-    supportDocs.forEach(function (d) {
-      var matched = 0, made = 0;
-      d.rms.forEach(function (rm) {
-        var card = matchExistingRow(rm);
-        if (card) {
-          var before = norm(readCard(card).name);
-          autoAttach(card, rm, d.filename);
-          matched++;
-          var dn = norm(rm.name || "");
-          if (before && dn && before !== dn && nameSimilarity(before, dn) < 1)
-            flags.push("Провери име: документ „" + (rm.name || d.filename) + "“ → ред „" + before + "“.");
+    if (!supportDocs.length) { finishConsolidation(flags, usable.length); return Promise.resolve(); }
+
+    // 2) Подкрепящи документи → AI съпоставяне към ред (многоезично), после допълване.
+    var payload = {
+      rows: rowList(),
+      docs: supportDocs.map(function (d, j) {
+        var x = docInciList(d);
+        return { j: j, filename: d.filename, role: d.role, inci: x.inci, allergens: x.allergens };
+      })
+    };
+    return fetch("/match", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.ok ? r.json() : { available: false, matches: [] }; })
+      .catch(function () { return { available: false, matches: [] }; })
+      .then(function (res) {
+        if (res && res.available) {
+          applyMatchMap(supportDocs, res.matches || [], flags);
         } else {
-          var model = normalizeRm(rm);
-          model.proposed = false;
-          model.allergensProposed = !!model.fragrance;   // нов ароматен ред → потвърди алергените
-          model.doc = d.filename;
-          appendIngredient(model);
-          made++;
+          applyHeuristic(supportDocs, flags);
+          flags.push("AI съпоставяне недостъпно — задай ANTHROPIC_API_KEY за точно " +
+            "съпоставяне между езици/търговски имена" + (res && res.note ? " (" + res.note + ")" : "") + ".");
         }
+        finishConsolidation(flags, usable.length);
       });
-      var parts = [];
-      if (matched) parts.push("→ " + matched + " ред(а)");
-      if (made) parts.push(made + " нов(и)");
-      setDocStatus(d.el, parts.join(" · ") || "няма съставки", (made && !matched) ? "warn" : "ok");
-      if (made && !matched)
-        flags.push("„" + d.filename + "“ не съвпадна с ред от рецептата — добавен е като нов (провери дозата).");
-    });
-
-    // 3) Редове без INCI (рецепта без съответен документ) → флаг + блокаж при изчисление.
-    document.querySelectorAll("#ingredients .ingredient").forEach(syncIncomplete);
-    var incompletes = document.querySelectorAll("#ingredients .ingredient.incomplete").length;
-    if (incompletes)
-      flags.push(incompletes + " ред(а) без INCI — добави документ за тях или въведи INCI ръчно.");
-
-    renderIntakeFlags(flags);
-    if (usable.length) toast("Готово — прегледай таблицата и потвърди алергените");
-    focusFirstEmptyDose();
   }
 
   // --- инициализация ---
   document.addEventListener("DOMContentLoaded", function () {
     var box = document.getElementById("ingredients");
-    if (box) DEMO.forEach(function (d) { box.appendChild(ingredientCard(d)); });
+    // DEMO се пропуска под тест (виж window.__PIF_TEST__), за да е детерминистично.
+    if (box && !window.__PIF_TEST__) DEMO.forEach(function (d) { box.appendChild(ingredientCard(d)); });
 
     var add = document.getElementById("add-ingredient");
     if (add) add.addEventListener("click", function () {
@@ -745,10 +817,12 @@
       .then(function (html) {
         if (!draft) return;
         draft.innerHTML = html;
-        consolidateExtract();     // авто: рецепта → редове, документи → допълване
+        return consolidateExtract();   // авто: рецепта → редове + AI съпоставяне на документите
+      })
+      .then(function () {
         // показваме попълнената ТАБЛИЦА (горе), а не само прегледа на файловете
         var ing = document.getElementById("ingredients");
-        (ing || draft).scrollIntoView({ behavior: "smooth", block: "start" });
+        if (ing) ing.scrollIntoView({ behavior: "smooth", block: "start" });
       })
       .catch(function (err) {
         if (draft) draft.innerHTML = '<div class="alarms err-box" role="alert">' +
