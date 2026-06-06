@@ -239,6 +239,20 @@ def test_extract_formula_kind_skips_vision_fallback(monkeypatch):
     assert seen == ["auto"]                                   # без force за рецепта
 
 
+def test_filter_drops_generic_table_headers():
+    """Заглавия на колони като „Unit“/„Value“ не са INCI и отпадат (вместо да станат съставка)."""
+    import copy
+    rms = [{"name": "Argan", "composition": [
+        {"inci_name": "Unit", "pct": 10},
+        {"inci_name": "Value", "pct": 5},
+        {"inci_name": "Argania Spinosa Kernel Oil", "pct": 100},
+    ]}]
+    kept, dropped = engine.filter_candidates(copy.deepcopy(rms))
+    names = {c["inci_name"] for rm in kept for c in rm["composition"]}
+    assert names == {"Argania Spinosa Kernel Oil"}
+    assert dropped == 2
+
+
 def test_compute_sample_default_works():
     r = client.post("/compute", data={"formula": SAMPLE_FORMULA})
     assert r.status_code == 200

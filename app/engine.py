@@ -72,16 +72,31 @@ _NON_INCI_RE = re.compile(
     r"e-?mail|www|säure|\bpage\b|\bvon\b)",
     re.IGNORECASE)
 
+# Общи заглавия на колони/полета от спец/SDS таблици, които извличането понякога
+# подава като „съставка“ (напр. „Unit“, „Value“). Точно съвпадение → не е INCI.
+_NON_INCI_WORDS = frozenset({
+    "unit", "units", "value", "values", "amount", "content", "concentration",
+    "percentage", "percent", "range", "min", "max", "minimum", "maximum",
+    "typical", "result", "results", "parameter", "parameters", "method", "methods",
+    "test", "tests", "appearance", "odour", "odor", "colour", "color", "density",
+    "viscosity", "moisture", "total", "spec", "specification", "property",
+    "properties", "characteristic", "characteristics", "name", "inci", "cas",
+    "function", "none", "n/a", "na", "tbd", "item", "no", "nr",
+})
+
 
 def _plausible_inci(name: str) -> bool:
     """Грубо: прилича ли низът на INCI име, а НЕ на правен/табличен/адресен текст.
 
     Маркери за изхвърляне: двоеточие (напр. фатти-acid „C20:1“ или „Origin:“),
     процент/запетая в самото име, дълги изречения, цели числа (адрес/страница/
-    пощенски код), ключови думи (REACh, ppm, „Limit“, GmbH, Seite, säure…).
+    пощенски код), ключови думи (REACh, ppm, „Limit“, GmbH, Seite, säure…),
+    както и общи заглавия на колони (Unit, Value, Amount…).
     """
     s = (name or "").strip()
     if not s:
+        return False
+    if s.lower() in _NON_INCI_WORDS:          # „Unit“, „Value“ и подобни заглавия
         return False
     if _CI_RE.match(s):                       # „CI 77491“ е валиден Colour Index
         return True
