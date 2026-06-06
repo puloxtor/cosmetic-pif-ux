@@ -1,6 +1,7 @@
 <div class="draft">
-  <p class="draft-intro">Прегледай извлеченото и <strong>добави във формулата</strong> —
-  цяло наведнъж или по една съставка. Провери всяко число.</p>
+  <p class="draft-intro">Всеки файл е <strong>съпоставен към ред</strong> по име.
+  Потвърди или коригирай съответствието, после <strong>добави във формулата</strong> —
+  всички наведнъж или по едно. Провери всяко число.</p>
   {% for doc in documents %}
   <div class="doc-card" data-rms='{{ (doc.rms or [])|tojson }}'>
     <div class="doc-head">
@@ -33,7 +34,7 @@
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             Добави всички ({{ doc.rms|length }})
           </button>
-          <span class="field-hint">или по една ↓</span>
+          <span class="field-hint">потвърждава всички съответствия · или по едно ↓</span>
         </div>
         <ul class="draft-list" role="list">
           {% for rm in doc.rms %}
@@ -48,11 +49,15 @@
                 {%- endif -%}
                 {% if rm.dose_pct and rm.dose_pct != "TODO" %} · {{ rm.dose_pct }}%{% else %} · доза: въведи{% endif %}
               </span>
-              <label class="mini di-dest-wrap">Към
-                <select class="di-dest" data-index="{{ loop.index0 }}"></select>
-              </label>
+              <div class="di-map">
+                <span class="di-arrow" aria-hidden="true">→</span>
+                <label class="mini di-dest-wrap">ред
+                  <select class="di-dest" data-index="{{ loop.index0 }}"></select>
+                </label>
+                <span class="di-match" data-index="{{ loop.index0 }}"></span>
+              </div>
             </div>
-            <button type="button" class="btn-ghost small" data-add-one data-index="{{ loop.index0 }}">Добави</button>
+            <button type="button" class="btn-ghost small di-confirm" data-add-one data-index="{{ loop.index0 }}">Добави</button>
           </li>
           <li class="di-conflicts" data-index="{{ loop.index0 }}" hidden></li>
           {% endfor %}

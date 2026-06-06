@@ -138,7 +138,7 @@
       inciLabel.style.display = "none";
       var wrap = el("div", { class: "field grow comp-wrap" });
       wrap.appendChild(el("p", { class: "comp-head" }, proposed
-        ? "Кандидати за INCI (AI чернова) — потвърди или премахни всеки спрямо източника:"
+        ? "Компоненти на съставката (AI чернова) — потвърди или премахни всеки спрямо източника:"
         : "Състав от даташийта:"));
       var clist = el("div", { class: "constituents", role: "list" });
       data.composition.forEach(function (c) { clist.appendChild(constituentRow(c, proposed)); });
@@ -162,6 +162,11 @@
       addAl.addEventListener("click", function () { allergens.appendChild(allergenRow()); });
       var alBlock = el("div", { class: "allergen-block" });
       alBlock.appendChild(el("p", { class: "field-hint" }, "Алергени по Приложение III и техния % в самия аромат."));
+      // „Потвърди всички“ — за чиста IFRA справка, потвърждаваш целия списък наведнъж.
+      // Всеки алерген пак има и собствено „Потвърди“. Показва се само при ≥2 чернови.
+      alBlock.appendChild(el("button", { type: "button", class: "btn-ghost small confirm-all-al",
+        hidden: "hidden", title: "Потвърди всички извлечени алергени наведнъж (за чиста IFRA справка)" },
+        "Потвърди всички"));
       alBlock.appendChild(allergens);
       alBlock.appendChild(addAl);
       fragWrap.appendChild(alBlock);
@@ -174,26 +179,6 @@
       if (data.fragrance && (!data.allergens || !data.allergens.length)) allergens.appendChild(allergenRow());
       syncFrag();
     }
-
-    // Прикачи даташийт КЪМ ТОЗИ РЕД — без гадаене на дестинация по име/INCI.
-    var tdsWrap = el("div", { class: "row-attach" });
-    var tdsInput = el("input", { type: "file", class: "tds-input",
-      accept: ".pdf,.png,.jpg,.jpeg,.webp", hidden: "hidden" });
-    var tdsBtn = el("button", { type: "button", class: "btn-ghost small tds-btn" },
-      "📎 Прикачи даташийт");
-    var tdsHost = el("div", { class: "di-conflicts", hidden: "hidden" });
-    var tdsNote = el("div", { class: "tds-note", hidden: "hidden" });
-    tdsBtn.addEventListener("click", function () { tdsInput.click(); });
-    tdsInput.addEventListener("change", function () {
-      var f = tdsInput.files && tdsInput.files[0];
-      if (f) attachDatasheet(card, f, tdsHost, tdsNote);
-      tdsInput.value = "";
-    });
-    tdsWrap.appendChild(tdsBtn);
-    tdsWrap.appendChild(tdsInput);
-    card.appendChild(tdsWrap);
-    card.appendChild(tdsNote);
-    card.appendChild(tdsHost);
 
     syncProposed(card);   // вдига черновата лента, ако има непотвърдени стойности
     return card;
@@ -228,6 +213,13 @@
     } else if (!has && badge) {
       badge.remove();
     }
+    syncAllergenBulk(card);
+  }
+  // „Потвърди всички“ за алергени се показва само при ≥2 непотвърдени (AI) алергена.
+  function syncAllergenBulk(card) {
+    var btn = card.querySelector(".confirm-all-al");
+    if (!btn) return;
+    btn.hidden = card.querySelectorAll(".allergens .allergen-row[data-proposed]").length < 2;
   }
   // Сваля „предложение“ от един елемент (вход, съставка или алерген) и маха бутона.
   function confirmValue(node) {
@@ -465,48 +457,47 @@
     });
   }
 
-  // Прикачва даташийт към КОНКРЕТЕН ред: качва един файл → /extract_one → слива
-  // първата суровина в реда през съществуващия attachToCard (пази име+доза).
-  function attachDatasheet(card, file, host, noteEl) {
-    var fd = new FormData();
-    fd.append("file", file, file.name);
-    var frag = card.querySelector(".ing-frag");
-    fd.append("type", (frag && frag.checked) ? "fragrance" : "composition");
-    var o = document.getElementById("ex-ocr");
-    fd.append("ocr", o ? o.value : "auto");
-    tdsNoteShow(noteEl, "Чета даташийта…", false);
-    fetch("/extract_one", { method: "POST", body: fd })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (j) {
-        if (j.error) { tdsNoteShow(noteEl, j.error, true); return; }
-        var rm = j.rms && j.rms[0];
-        if (!rm) { tdsNoteShow(noteEl, "Нищо не разпознах в този даташийт.", true); return; }
-        tdsNoteShow(noteEl, "", false);                 // успех → скрий бележката
-        if (j.notes && j.notes.length) toast(j.notes.join(" "));
-        attachToCard(card, rm, host);                   // слива в реда (пази име+доза)
-      })
-      .catch(function (err) {
-        tdsNoteShow(noteEl, "Проблем при качването (" + escHtml(err.message) + ").", true);
-      });
+  // --- прилика по име: масово съпоставяне на TDS файл към съществуващ ред ---
+  // Имената на даташийт-файлове носят шум („Olcopher TDS“, „…_datasheet_v2“).
+  // matchKey маха тези думи/пунктуация, за да остане идентичността на суровината.
+  var DS_STOP = /\b(tds|msds|sds|coa|pds|datasheet|data\s*sheet|specification|spec|sheet|даташийт|спецификация|сертификат|certificate|final|copy|rev|ver|version|v)\b/gi;
+  function matchKey(s) {
+    return norm(s)
+      .replace(/\([^)]*\)/g, " ")          // премахни пояснения в скоби, напр. „(пример)“
+      .replace(DS_STOP, " ")               // премахни думи от имена на даташийти
+      .replace(/[^0-9a-zа-яё ]+/gi, " ")   // пунктуация/разделители → интервал
+      .replace(/\s+/g, " ").trim();
   }
-  function tdsNoteShow(noteEl, msg, isErr) {
-    if (!noteEl) { if (msg) toast(msg); return; }
-    if (!msg) { noteEl.hidden = true; noteEl.textContent = ""; return; }
-    noteEl.hidden = false;
-    noteEl.className = "tds-note" + (isErr ? " err" : "");
-    noteEl.textContent = msg;
+  function keyTokens(s) { return matchKey(s).split(" ").filter(Boolean); }
+  // 0..1: 1 = еднакъв ключ; иначе дял на общите думи спрямо по-късото име.
+  function nameSimilarity(a, b) {
+    var ka = matchKey(a), kb = matchKey(b);
+    if (!ka || !kb) return 0;
+    if (ka === kb) return 1;
+    var ta = keyTokens(a), tb = keyTokens(b);
+    if (!ta.length || !tb.length) return 0;
+    var setB = {}; tb.forEach(function (t) { setB[t] = 1; });
+    var hit = 0; ta.forEach(function (t) { if (setB[t]) hit++; });
+    return hit / Math.min(ta.length, tb.length);
   }
+  var MATCH_MIN = 0.6;   // праг: под него → „нова съставка“, ползвателят коригира
 
-  // Auto-match: ред с еднакво (нормализирано) INCI или име. Различни езици
-  // (Бадемово масло ↔ Almond Oil) няма да съвпаднат → дефолт „нова“, ползвателят избира.
+  // Съпоставя извлечен файл към НАЙ-близкия ред: точно INCI/име първо, иначе
+  // прилика по име (файл „Olcopher TDS“ ↔ ред „Olcopher“). Връща реда или null.
   function matchExistingRow(rm) {
-    var m = normalizeRm(rm), dn = norm(m.name), di = norm(modelInci(m)), found = null;
+    var m = normalizeRm(rm), dn = norm(m.name), di = norm(modelInci(m));
+    var mi = modelInci(m), best = null, bestScore = 0;
     document.querySelectorAll("#ingredients .ingredient").forEach(function (card) {
-      if (found) return;
       var cm = readCard(card), cn = norm(cm.name), ci = norm(modelInci(cm));
-      if ((di && ci && di === ci) || (dn && cn && dn === cn)) found = card;
+      if ((di && ci && di === ci) || (dn && cn && dn === cn)) {       // точно съвпадение
+        if (bestScore < 1) { best = card; bestScore = 1; }
+        return;
+      }
+      var s = nameSimilarity(m.name, cm.name);                        // прилика по име
+      if (mi && ci) s = Math.max(s, nameSimilarity(mi, modelInci(cm)));// или по INCI
+      if (s > bestScore) { best = card; bestScore = s; }
     });
-    return found;
+    return bestScore >= MATCH_MIN ? best : null;
   }
 
   // Пълни „Към“ селектите от ЖИВИТЕ редове; пази избора на ползвателя.
@@ -535,7 +526,21 @@
           '>' + escHtml(o.label) + '</option>');
       });
       sel.innerHTML = opts.join("");
+      reflectMapping(sel.closest(".draft-item"), desired !== "new");
     });
+  }
+
+  // Отразява предложеното съответствие „файл → ред“: подсветка, бележка и етикет
+  // на бутона. Самият избор е в падащото меню (.di-dest) — ползвателят коригира там.
+  function reflectMapping(item, isMatch) {
+    if (!item) return;
+    item.classList.toggle("matched", isMatch);
+    var hint = item.querySelector(".di-match");
+    if (hint) hint.textContent = isMatch
+      ? "съвпадение по име — потвърди или коригирай реда"
+      : "нов ред (няма съвпадение)";
+    var btn = item.querySelector(".di-confirm");
+    if (btn) btn.textContent = isMatch ? "Потвърди" : "Добави";
   }
 
   // Прилага един извлечен елемент към избраната дестинация.
@@ -601,6 +606,13 @@
     if (e.target && e.target.closest && e.target.closest(".di-dest")) populateDestinations();
   });
 
+  // Коригиране на съответствието „файл → ред“ от падащото меню → опресни презентацията.
+  document.body.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t && t.classList && t.classList.contains("di-dest"))
+      reflectMapping(t.closest(".draft-item"), t.value !== "new");
+  });
+
   // делегиране на бутоните „Добави“ / „Добави всички“ (вмъкнати чрез fetch)
   document.body.addEventListener("click", function (e) {
     // „Потвърди“ → сваля предложението от конкретната стойност (INCI вход или съставка)
@@ -610,6 +622,16 @@
       var container = cv.closest(".constituent-row") || cv.closest(".allergen-row");
       confirmValue(container || card.querySelector(".ing-inci[data-proposed]"));
       syncProposed(card);
+      return;
+    }
+
+    // „Потвърди всички“ (алергени) → сваля черновата от ВСИЧКИ алергени в реда.
+    var cvAll = e.target.closest ? e.target.closest(".confirm-all-al") : null;
+    if (cvAll) {
+      var alCard = cvAll.closest(".ingredient");
+      alCard.querySelectorAll(".allergens .allergen-row[data-proposed]")
+        .forEach(function (row) { confirmValue(row); });
+      syncProposed(alCard);
       return;
     }
 
@@ -624,23 +646,19 @@
 
     var all = e.target.closest ? e.target.closest("[data-add-all]") : null;
     if (all) {
-      // Само СЪВПАДНАЛИ елементи се прикачват наведнъж; несъвпадналите искат
-      // изричен „Добави“ — за да не се създават тихомълком дублирани съставки.
+      // „Добави всички“ потвърждава ВСЯКО съответствие наведнъж: всеки елемент
+      // отива според своята дестинация — съвпадналите се сливат в реда си, а
+      // тези без съвпадение („Нова съставка“) стават нови редове. Нищо не се пропуска.
       var docAll = all.closest(".doc-card"), rmsAll = [];
       try { rmsAll = JSON.parse(docAll.getAttribute("data-rms") || "[]"); } catch (err) {}
-      var attached = 0, skipped = 0;
+      var added = 0, merged = 0;
       rmsAll.forEach(function (_, i) {
-        var sel = docAll.querySelector('.di-dest[data-index="' + i + '"]');
-        var dest = sel ? sel.value : "new";
-        if (dest && dest !== "new") { applyItem(docAll, i); attached++; }
-        else skipped++;
+        if (applyItem(docAll, i) === "new") added++; else merged++;
       });
-      if (attached && skipped)
-        toast("Прикачени " + attached + "; " + skipped + " без съвпадение — добави ги поотделно");
-      else if (attached)
-        toast(attached === 1 ? "Прикачена 1 съставка" : "Прикачени " + attached + " съставки");
-      else
-        toast("Няма съвпадащи редове — добави всеки поотделно с „Добави“");
+      var parts = [];
+      if (merged) parts.push("слети " + merged + " в съществуващи редове");
+      if (added) parts.push("добавени " + added + " нови");
+      toast(parts.length ? parts.join(" · ") + " — провери числата" : "Няма какво да добавя");
       focusFirstEmptyDose();
       return;
     }

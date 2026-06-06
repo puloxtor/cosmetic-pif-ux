@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -69,8 +69,8 @@ def index(request: Request):
 async def _process_one(f: UploadFile, type: str, ocr: str) -> dict:
     """Валидира и извлича ЕДИН файл → {filename, rms, notes, error}.
 
-    Споделя се от /extract (множество файлове) и /extract_one (един ред).
-    Грешка връща се в полето error — никога не събаря UI-я.
+    Извиква се за всеки качен файл от /extract; грешка се връща в полето error,
+    за да не събаря останалите файлове, нито UI-я.
     """
     name = f.filename or "document"
     doc = {"filename": name, "rms": [], "notes": [], "error": None}
@@ -110,19 +110,6 @@ async def extract(request: Request,
     return templates.TemplateResponse(request, "_draft.html", {
         "documents": documents,
     })
-
-
-@app.post("/extract_one")
-async def extract_one(file: UploadFile = File(...),
-                      type: str = Form("composition"),
-                      ocr: str = Form("auto")):
-    """Един файл, вързан към КОНКРЕТЕН ред → JSON за прикачване от app.js.
-
-    Front-end-ът извиква това от бутона „Прикачи даташийт“ на даден ред и слива
-    резултата в реда (attachToCard), вместо да гадае дестинацията по име/INCI.
-    """
-    doc = await _process_one(file, type, ocr)
-    return JSONResponse({"rms": doc["rms"], "notes": doc["notes"], "error": doc["error"]})
 
 
 @app.post("/compute", response_class=HTMLResponse)

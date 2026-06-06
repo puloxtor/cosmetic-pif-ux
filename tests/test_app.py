@@ -86,30 +86,6 @@ def test_extract_rejects_oversize_file():
     assert "твърде голям" in r.text
 
 
-def test_extract_one_returns_json_for_a_single_row(monkeypatch):
-    """Бутонът „Прикачи даташийт“ извиква /extract_one и получава JSON за сливане."""
-    rms = [{"name": "Sweet Almond Oil", "dose_pct": "TODO",
-            "composition": [{"inci_name": "Prunus Amygdalus Dulcis Oil", "pct": 100}]}]
-    monkeypatch.setattr(engine, "extract_structured", lambda *a, **k: (rms, ["провери числата"]))
-    r = client.post("/extract_one", data={"type": "composition", "ocr": "never"},
-                    files={"file": ("almond_tds.pdf", b"%PDF dummy", "application/pdf")})
-    assert r.status_code == 200
-    j = r.json()
-    assert j["error"] is None
-    assert j["notes"] == ["провери числата"]
-    assert j["rms"][0]["composition"][0]["inci_name"] == "Prunus Amygdalus Dulcis Oil"
-
-
-def test_extract_one_rejects_bad_extension():
-    """Валидирането на файла важи и за per-row качването."""
-    r = client.post("/extract_one", data={"type": "composition", "ocr": "never"},
-                    files={"file": ("evil.exe", b"MZ", "application/octet-stream")})
-    assert r.status_code == 200
-    j = r.json()
-    assert j["error"] and "Неподдържан" in j["error"]
-    assert j["rms"] == []
-
-
 def test_extract_rejects_too_many_files():
     files = [("files", (f"f{i}.pdf", b"%PDF", "application/pdf")) for i in range(21)]
     r = client.post("/extract", data={"type": "auto", "ocr": "never"}, files=files)
@@ -241,10 +217,13 @@ def test_extract_endpoint_returns_structured_draft(monkeypatch):
                     files={"files": ("x.pdf", b"%PDF-1.4 dummy", "application/pdf")})
     assert r.status_code == 200
     assert "Sweet Almond Oil" in r.text          # дружелюбен преглед
-    assert "data-add-all" in r.text               # бутон „добави всички“
+    assert "data-add-all" in r.text               # бутон „добави всички“ (потвърди всички съответствия)
     assert "data-add-one" in r.text               # бутон за една съставка
     assert "data-rms=" in r.text                  # структурирани данни за един клик
     assert 'class="di-dest"' in r.text            # избор: нова или допълни съществуваща
+    assert 'class="di-map"' in r.text             # презентация на съответствието „файл → ред“
+    assert "di-match" in r.text                   # бележка за състоянието на съответствието
+    assert "di-confirm" in r.text                 # потвърждаване на съответствието
     assert 'class="di-conflicts"' in r.text       # място за разрешаване на конфликти
     assert "провери числата" in r.text            # бележки от сканирането
 

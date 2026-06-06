@@ -176,11 +176,8 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .uv-tag { font-size:.76rem; font-weight:700; color:var(--warn); display:inline-flex; align-items:center; gap:.35rem; }
 .yaml-ack { margin-top:.5rem; font-size:.82rem; }
 
-/* прикачване на даташийт към конкретен ред */
-.row-attach { flex-basis:100%; margin-top:.35rem; }
-.tds-btn { color:var(--primary-d); }
-.tds-note { flex-basis:100%; margin-top:.35rem; font-size:.8rem; color:var(--muted); }
-.tds-note.err { color:var(--err); }
+/* „Потвърди всички“ за извлечени алергени (чиста IFRA справка) */
+.confirm-all-al { align-self:flex-start; margin:0 0 .3rem; color:var(--primary-d); border-color:#bcd2c4; }
 
 /* предложена (непотвърдена) стойност — чернова, не влиза в изчислението */
 .proposed input, input.proposed { border:1px dashed var(--warn) !important; background:#fff6e6; }
@@ -236,9 +233,16 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .di-sub { color:var(--muted); font-size:.78rem; }
 
 /* избор на дестинация: нова съставка или допълни съществуваща */
-.di-dest-wrap { margin-top:.35rem; flex-direction:row; align-items:center; gap:.35rem; color:#54514b; }
+.di-dest-wrap { flex-direction:row; align-items:center; gap:.35rem; color:#54514b; }
 .di-dest { font-size:.8rem; padding:.2rem .35rem; border:1px solid var(--line);
-  border-radius:var(--radius-sm); background:var(--surface); max-width:18rem; }
+  border-radius:var(--radius-sm); background:var(--surface); max-width:14rem; }
+
+/* съответствие „файл → ред“ при масово прикачване на TDS */
+.di-map { display:flex; align-items:center; gap:.4rem; margin-top:.35rem; flex-wrap:wrap; }
+.di-arrow { color:var(--primary-d); font-weight:700; }
+.di-match { font-size:.74rem; color:var(--muted); }
+.draft-item.matched { border-color:#bcd2c4; background:var(--primary-soft); }
+.draft-item.matched .di-match { color:var(--primary-d); font-weight:600; }
 .di-conflicts { list-style:none; margin:.2rem 0 0; padding:0; }
 .cf-panel { background:var(--warn-soft); border:1px solid var(--line);
   border-radius:var(--radius-sm); padding:.55rem .7rem; display:flex; flex-direction:column; gap:.4rem; }
