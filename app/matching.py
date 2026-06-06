@@ -15,8 +15,12 @@ from __future__ import annotations
 import json
 import os
 
-# Лек, но способен модел е достатъчен за съпоставяне (само текст). Сменяем с env.
-DEFAULT_MODEL = os.environ.get("PIF_MATCH_MODEL", "claude-haiku-4-5")
+# Ползва СЪЩИЯ модел като AI-зрението по подразбиране: той вече работи на деплоя
+# (там, където снимките се четат), затова съпоставянето няма да падне заради непознат
+# идентификатор на модел. Сменяй независимо с PIF_MATCH_MODEL (по-евтин/по-бърз),
+# след като си потвърдил(а), че работи.
+DEFAULT_MODEL = (os.environ.get("PIF_MATCH_MODEL")
+                 or os.environ.get("PIF_VISION_MODEL", "claude-opus-4-8"))
 
 SYSTEM = (
     "You match cosmetic raw-material documents to the lines of a product formula. "

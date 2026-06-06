@@ -46,6 +46,25 @@ def test_match_documents_filters_bad_indices(monkeypatch):
     assert by_doc[1]["matched"] is False                             # изрично несигурно
 
 
+def test_match_honors_explicit_model(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    captured = {}
+    monkeypatch.setattr(matching, "_call_model",
+                        lambda r, d, model: captured.update(model=model) or {"matches": []})
+    matching.match_documents(ROWS, DOCS, model="claude-test-123")
+    assert captured["model"] == "claude-test-123"
+
+
+def test_match_default_model_is_a_real_id(monkeypatch):
+    """По подразбиране ползва реален модел (зрението), не непотвърден алиас."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    captured = {}
+    monkeypatch.setattr(matching, "_call_model",
+                        lambda r, d, model: captured.update(model=model) or {"matches": []})
+    matching.match_documents(ROWS, DOCS)              # без явен модел → DEFAULT_MODEL
+    assert captured["model"] == matching.DEFAULT_MODEL and captured["model"]
+
+
 def test_match_documents_no_key_is_unavailable(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     res = matching.match_documents(ROWS, DOCS)

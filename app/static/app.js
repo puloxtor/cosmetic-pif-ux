@@ -597,7 +597,9 @@
         if (low) flags.push("Провери съответствието: „" + d.filename + "“ → ред «" + rowName + "» (несигурно).");
       } else {
         setDocStatus(d.el, made + " нов(и)", "warn");
-        flags.push("„" + d.filename + "“ не съвпадна с ред — добавен е като нов (провери дозата).");
+        var why = (m && m.why) ? " (" + m.why + ")" : "";
+        flags.push("„" + d.filename + "“ — AI не намери съвпадащ ред" + why +
+          "; добавен е като нов (провери дозата).");
       }
     });
   }
@@ -669,11 +671,14 @@
       .catch(function () { return { available: false, matches: [] }; })
       .then(function (res) {
         if (res && res.available) {
+          flags.push("✅ AI съпоставяне активно" + (res.model ? " (модел: " + res.model + ")" : "") +
+            " — провери предложените съответствия.");
           applyMatchMap(supportDocs, res.matches || [], flags);
         } else {
           applyHeuristic(supportDocs, flags);
-          flags.push("AI съпоставяне недостъпно — задай ANTHROPIC_API_KEY за точно " +
-            "съпоставяне между езици/търговски имена" + (res && res.note ? " (" + res.note + ")" : "") + ".");
+          flags.push("⚠ AI съпоставяне недостъпно — задай ANTHROPIC_API_KEY за точно " +
+            "съпоставяне между езици/търговски имена" + (res && res.note ? " (" + res.note + ")" : "") +
+            ". Падам към проста евристика по име.");
         }
         finishConsolidation(flags, usable.length);
       });
