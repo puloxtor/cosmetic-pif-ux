@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap&subset=cyrillic,latin" rel="stylesheet">
   <!-- HTMX от CDN. За офлайн: свали в app/static/htmx.min.js и смени src (виж README). -->
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
-  <script defer src="/static/app.js"></script>
+  <script defer src="/static/app.js?v={{ asset_version }}"></script>
 </head>
 <body>
   <header>
@@ -80,11 +80,13 @@
       </form>
 
       <h2><span class="step">2</span> Качи документи <span class="optional">(по избор)</span></h2>
-      <p class="hint">Пусни <strong>всички даташийти наведнъж</strong> (или състав,
-      сертификат за алергени, цяла рецепта). Всеки файл се <strong>съпоставя към
-      съответния ред</strong> по име — потвърждаваш или коригираш съответствието.
-      Цифров PDF се чете директно; снимка/сканиран минава през AI-зрение и иска
-      <code>ANTHROPIC_API_KEY</code>. <strong>Провери всяко число</strong>.</p>
+      <p class="hint">Пусни <strong>снимката на рецептата и всички даташийти
+      наведнъж</strong>. Файловете се разпознават <strong>автоматично</strong> —
+      рецептата дава редовете и дозите горе, а подкрепящите документи допълват
+      INCI/състав и алергени към съответната суровина. <strong>Нищо за ръчно
+      мапване.</strong> Цифров PDF се чете директно; снимка/сканиран минава през
+      AI-зрение и иска <code>ANTHROPIC_API_KEY</code>. <strong>Провери всяко
+      число</strong> и потвърди алергените.</p>
       <form id="extract-form" onsubmit="return false">
         <div id="dropzone" class="dropzone" role="button" tabindex="0"
              aria-label="Избери файлове или ги пусни тук">
@@ -102,7 +104,7 @@
               <option value="fragrance">Аромат (алергени)</option>
               <option value="formula">Рецепта</option>
             </select>
-            <small class="field-hint">Остави „Автоматично“, ако не си сигурна.</small>
+            <small class="field-hint">Остави „Автоматично“ — всеки файл се разпознава сам.</small>
           </label>
           <label class="field">Разчитане
             <select id="ex-ocr">
@@ -114,7 +116,7 @@
           </label>
         </div>
         <button type="button" id="extract-btn" class="btn-secondary">
-          Извлечи чернова
+          Разчети и попълни таблицата
           <span id="spin2" class="spin" hidden aria-live="polite">чета…</span>
         </button>
       </form>

@@ -146,6 +146,45 @@ def test_extract_route_never_emits_boilerplate_as_ingredient(monkeypatch):
     assert "не приличат на INCI" in r.text                   # бележка за пропуснатите редове
 
 
+def test_assembled_set_yields_clean_inci_without_raw_names():
+    """Сглобен комплект (рецепта + документи) → чист INCI само с реални INCI имена.
+
+    Точно това разваляше изхода преди: ред без INCI пускаше българското/търговско
+    име на суровината в INCI списъка. Тук проверяваме формата, който фронтендът
+    вече сглобява — имената на суровините не бива да се появяват в изхода.
+    """
+    formula = """product:
+  name: "Beard Oil"
+  product_type: "leave-on"
+  applied_amount_g: 2.0
+  retention_factor: 1.0
+  sale_countries: ["BG"]
+
+raw_materials:
+  - name: "Бадемово масло"
+    dose_pct: 69.5
+    composition:
+      - { inci_name: "Prunus Amygdalus Dulcis Oil", pct: 100 }
+  - name: "Рицилово масло"
+    dose_pct: 27.5
+    composition:
+      - { inci_name: "Ricinus Communis Seed Oil", pct: 100 }
+  - name: "Peace fragrance"
+    dose_pct: 3.0
+    is_fragrance: true
+    allergens:
+      - { name: "Limonene", pct_in_fragrance: 4.0 }
+"""
+    r = client.post("/compute", data={"formula": formula})
+    assert r.status_code == 200
+    assert "Prunus Amygdalus Dulcis Oil" in r.text
+    assert "Ricinus Communis Seed Oil" in r.text
+    # имената на суровините (български/търговски) НЕ бива да изтичат в изхода/INCI
+    assert "Бадемово масло" not in r.text
+    assert "Рицилово масло" not in r.text
+    assert "Peace fragrance" not in r.text
+
+
 def test_compute_sample_default_works():
     r = client.post("/compute", data={"formula": SAMPLE_FORMULA})
     assert r.status_code == 200
@@ -208,24 +247,35 @@ def _fake_extract(rms, notes):
     return lambda data, fn, kind, ocr: (rms, list(notes))
 
 
-def test_extract_endpoint_returns_structured_draft(monkeypatch):
+def test_extract_endpoint_returns_intake_summary(monkeypatch):
     rms = [{"name": "Sweet Almond Oil", "dose_pct": "TODO",
             "composition": [{"inci_name": "Prunus Amygdalus Dulcis Oil", "pct": 100}]}]
     monkeypatch.setattr(engine, "extract_structured", _fake_extract(rms, ["провери числата"]))
     r = client.post("/extract",
                     data={"type": "composition", "ocr": "never"},
-                    files={"files": ("x.pdf", b"%PDF-1.4 dummy", "application/pdf")})
+                    files={"files": ("Almond Oil.pdf", b"%PDF-1.4 dummy", "application/pdf")})
     assert r.status_code == 200
-    assert "Sweet Almond Oil" in r.text          # дружелюбен преглед
-    assert "data-add-all" in r.text               # бутон „добави всички“ (потвърди всички съответствия)
-    assert "data-add-one" in r.text               # бутон за една съставка
-    assert "data-rms=" in r.text                  # структурирани данни за един клик
-    assert 'class="di-dest"' in r.text            # избор: нова или допълни съществуваща
-    assert 'class="di-map"' in r.text             # презентация на съответствието „файл → ред“
-    assert "di-match" in r.text                   # бележка за състоянието на съответствието
-    assert "di-confirm" in r.text                 # потвърждаване на съответствието
-    assert 'class="di-conflicts"' in r.text       # място за разрешаване на конфликти
+    assert "Almond Oil.pdf" in r.text             # името на файла в прегледа
+    assert "intake-doc" in r.text                 # единица за клиентско консолидиране
+    assert "data-rms=" in r.text                  # структурирани данни за клиента
+    assert "data-role=" in r.text                 # авто-разпозната роля
+    assert 'role="ingredient"' in r.text or "role-ingredient" in r.text  # съставков документ
+    assert "Prunus Amygdalus Dulcis Oil" in r.text  # реалната съставка (в data-rms)
     assert "провери числата" in r.text            # бележки от сканирането
+    # старите ръчни контроли за мапване вече не съществуват
+    assert "data-add-all" not in r.text
+    assert 'class="di-dest"' not in r.text
+
+
+def test_extract_classifies_fragrance_certificate(monkeypatch):
+    """Документ с алергени се разпознава като аромат (роля fragrance)."""
+    rms = [{"name": "Peace on Earth", "is_fragrance": True,
+            "allergens": [{"name": "Limonene", "pct_in_fragrance": 4.0}]}]
+    monkeypatch.setattr(engine, "extract_structured", _fake_extract(rms, []))
+    r = client.post("/extract", data={"type": "auto", "ocr": "never"},
+                    files={"files": ("Parfum_PEace on Earth.pdf", b"%PDF d", "application/pdf")})
+    assert r.status_code == 200
+    assert 'data-role="fragrance"' in r.text
 
 
 def test_extract_handles_multiple_files_and_per_file_error(monkeypatch):

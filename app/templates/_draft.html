@@ -1,72 +1,46 @@
-<div class="draft">
-  <p class="draft-intro">Всеки файл е <strong>съпоставен към ред</strong> по име.
-  Потвърди или коригирай съответствието, после <strong>добави във формулата</strong> —
-  всички наведнъж или по едно. Провери всяко число.</p>
-  {% for doc in documents %}
-  <div class="doc-card" data-rms='{{ (doc.rms or [])|tojson }}'>
-    <div class="doc-head">
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
-      <strong>{{ doc.filename }}</strong>
-    </div>
+<div class="intake" id="intake">
+  <p class="intake-intro">Файловете са разпознати <strong>автоматично</strong>.
+  Рецептата дава редовете и дозите; подкрепящите документи допълват INCI/състав
+  и алергени към съответната суровина. <strong>Прегледай таблицата вляво</strong>,
+  потвърди алергените и натисни „Изчисли“. Провери всяко число.</p>
 
-    {% if doc.error %}
-      <div class="alarms err-box" role="alert">
-        <strong>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
-          Не успях да прочета този файл
-        </strong>
-        <p>{{ doc.error }}</p>
+  <ul class="intake-list" role="list">
+    {% for doc in documents %}
+    {% set label = {"formula": "рецепта", "fragrance": "аромат · алергени"}.get(doc.role, "съставков документ") %}
+    <li class="intake-doc role-{{ doc.role }}"
+        data-rms='{{ (doc.rms or [])|tojson }}'
+        data-role="{{ doc.role }}"
+        data-filename="{{ doc.filename }}"
+        data-error="{{ '1' if doc.error else '' }}">
+      <div class="idoc-head">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+        <span class="idoc-file">{{ doc.filename }}</span>
+        {% if not doc.error %}<span class="idoc-role">{{ label }}</span>{% endif %}
+        <span class="idoc-status" data-index="{{ loop.index0 }}"></span>
       </div>
-    {% else %}
-      {% if doc.notes %}
-      <div class="alarms" role="status">
-        <strong>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-          Бележки от разчитането — провери ги
-        </strong>
-        <ul>{% for n in doc.notes %}<li>{{ n }}</li>{% endfor %}</ul>
-      </div>
-      {% endif %}
 
-      {% if doc.rms %}
-        <div class="doc-actions">
-          <button type="button" class="btn-primary small" data-add-all>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            Добави всички ({{ doc.rms|length }})
-          </button>
-          <span class="field-hint">потвърждава всички съответствия · или по едно ↓</span>
+      {% if doc.error %}
+        <div class="alarms err-box" role="alert">
+          <strong>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+            Не успях да прочета този файл
+          </strong>
+          <p>{{ doc.error }}</p>
         </div>
-        <ul class="draft-list" role="list">
-          {% for rm in doc.rms %}
-          <li class="draft-item">
-            <div class="draft-meta">
-              <span class="di-name">{{ rm.name }}</span>
-              <span class="di-sub">
-                {%- if rm.is_fragrance %}аромат · {{ rm.allergens|length }} алерген(а)
-                {%- else %}{% set comp = rm.composition or [] %}
-                  {%- if comp %}{{ comp[0].inci_name }}{% if comp|length > 1 %} (+{{ comp|length - 1 }} INCI){% endif %}
-                  {%- else %}—{% endif %}
-                {%- endif -%}
-                {% if rm.dose_pct and rm.dose_pct != "TODO" %} · {{ rm.dose_pct }}%{% else %} · доза: въведи{% endif %}
-              </span>
-              <div class="di-map">
-                <span class="di-arrow" aria-hidden="true">→</span>
-                <label class="mini di-dest-wrap">ред
-                  <select class="di-dest" data-index="{{ loop.index0 }}"></select>
-                </label>
-                <span class="di-match" data-index="{{ loop.index0 }}"></span>
-              </div>
-            </div>
-            <button type="button" class="btn-ghost small di-confirm" data-add-one data-index="{{ loop.index0 }}">Добави</button>
-          </li>
-          <li class="di-conflicts" data-index="{{ loop.index0 }}" hidden></li>
-          {% endfor %}
-        </ul>
       {% else %}
-        <p class="muted">Няма разпознати съставки в този документ. Опитай с друг
-        вид/разчитане или въведи ръчно.</p>
+        {% if doc.notes %}
+        <details class="idoc-notes">
+          <summary>Бележки от разчитането ({{ doc.notes|length }}) — провери ги</summary>
+          <ul>{% for n in doc.notes %}<li>{{ n }}</li>{% endfor %}</ul>
+        </details>
+        {% endif %}
+        {% if not doc.rms %}
+        <p class="muted">Няма разпознати съставки тук. Опитай друго разчитане или въведи ръчно.</p>
+        {% endif %}
       {% endif %}
-    {% endif %}
-  </div>
-  {% endfor %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="intake-flags" role="status" hidden></div>
 </div>

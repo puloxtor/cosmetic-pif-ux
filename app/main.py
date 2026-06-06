@@ -6,6 +6,7 @@ FastAPI + HTMX UX за козметичния PIF/CPSR енджин.
 с разбивката + генерирания INCI. Цялата сметка идва от енджина (pif_engine).
 """
 from __future__ import annotations
+import hashlib
 import os
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import engine
+from . import engine, intake
 
 BASE = Path(__file__).parent
 app = FastAPI(title="Cosmetic PIF/CPSR UX")
@@ -26,6 +27,18 @@ ALLOWED_EXT = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_CT = {"application/pdf", "image/png", "image/jpeg", "image/webp"}
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+
+
+def _asset_version() -> str:
+    """Кратък хеш на app.js → кеш-busting на ?v=…, за да не сервира деплоят стар JS."""
+    try:
+        data = (BASE / "static" / "app.js").read_bytes()
+        return hashlib.sha1(data).hexdigest()[:8]
+    except OSError:
+        return "dev"
+
+
+ASSET_VERSION = _asset_version()
 
 # Примерна формула, заредена по подразбиране (работи веднага при Compute).
 SAMPLE_FORMULA = """product:
@@ -63,17 +76,20 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
         "engine_version": engine.ENGINE_VERSION,
         "sample": SAMPLE_FORMULA,
+        "asset_version": ASSET_VERSION,
     })
 
 
 async def _process_one(f: UploadFile, type: str, ocr: str) -> dict:
-    """Валидира и извлича ЕДИН файл → {filename, rms, notes, error}.
+    """Валидира и извлича ЕДИН файл → {filename, rms, notes, error, role}.
 
     Извиква се за всеки качен файл от /extract; грешка се връща в полето error,
-    за да не събаря останалите файлове, нито UI-я.
+    за да не събаря останалите файлове, нито UI-я. Ролята (рецепта / съставков
+    документ / аромат) се определя автоматично — ползвателят не класифицира ръчно.
     """
     name = f.filename or "document"
-    doc = {"filename": name, "rms": [], "notes": [], "error": None}
+    doc = {"filename": name, "rms": [], "notes": [], "error": None,
+           "role": "ingredient"}
     try:
         ext = os.path.splitext(name)[1].lower()
         if ext not in ALLOWED_EXT:
@@ -84,9 +100,12 @@ async def _process_one(f: UploadFile, type: str, ocr: str) -> dict:
         data = await f.read(MAX_FILE_BYTES + 1)  # ограничено четене
         if len(data) > MAX_FILE_BYTES:
             raise ValueError("Файлът е твърде голям (макс. 10 MB).")
-        rms, notes = engine.extract_structured(data, name, type, ocr)
+        # Авто-роля → правилен kind за енджина (изричен избор от UI има предимство).
+        kind = intake.kind_for_extraction(name, type)
+        rms, notes = engine.extract_structured(data, name, kind, ocr)
         doc["rms"] = rms
         doc["notes"] = notes
+        doc["role"] = intake.classify_document(name, rms)
     except Exception as e:  # извличането никога не бива да събаря UI-я
         doc["error"] = engine.friendly_error(e)
     return doc

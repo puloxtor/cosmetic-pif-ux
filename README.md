@@ -40,8 +40,12 @@ pip install fastapi "uvicorn[standard]" jinja2 python-multipart httpx pytest
 ## Тестове
 
 ```bash
-pytest -q
+pytest -q                 # бекенд + класификация на документи
+npm install && npm test   # клиентска логика (app.js) през jsdom — по избор
 ```
+
+Билд-целта на интейка (какво трябва да възпроизведе UX-ът: качване на комплект
+→ таблица + INCI) е описана в [`docs/UX_INTAKE_SPEC.md`](docs/UX_INTAKE_SPEC.md).
 
 ## Как да вдигнеш версията на енджина
 

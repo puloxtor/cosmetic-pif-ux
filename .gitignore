@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .venv/
+node_modules/
+package-lock.json
 .DS_Store
 *.egg-info/
 .pytest_cache/

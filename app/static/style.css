@@ -216,42 +216,36 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .fc-size { color:var(--muted); font-size:.74rem; flex:0 0 auto; }
 .spin { color:var(--muted); font-size:.82rem; margin-left:.4rem; }
 
-/* извлечени документи (чернова) */
-.draft-intro { font-size:.86rem; color:var(--muted); margin:0 0 var(--s2); }
+/* преглед на качения комплект (документ-първо, авто-разпознаване) */
+.intake-intro { font-size:.86rem; color:var(--muted); margin:0 0 var(--s2); }
 .btn-primary.small { padding:.4rem .8rem; min-height:0; font-size:.84rem; }
-#draft { margin-top:var(--s3); display:flex; flex-direction:column; gap:var(--s3); }
-.doc-card { border:1px solid var(--line); border-radius:var(--radius-sm); padding:var(--s3) var(--s4); background:var(--surface); }
-.doc-head { display:flex; align-items:center; gap:.45rem; color:var(--ink); font-size:.92rem; margin-bottom:var(--s2); }
-.doc-head svg { color:var(--primary-d); flex:0 0 auto; }
-.doc-actions { display:flex; align-items:center; gap:var(--s3); flex-wrap:wrap; margin:var(--s2) 0; }
 .btn-secondary.small { padding:.4rem .8rem; min-height:0; font-size:.84rem; }
-.draft-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.4rem; }
-.draft-item { display:flex; align-items:center; justify-content:space-between; gap:var(--s3);
-  background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:.45rem .6rem; }
-.draft-meta { display:flex; flex-direction:column; min-width:0; }
-.di-name { font-weight:600; font-size:.88rem; }
-.di-sub { color:var(--muted); font-size:.78rem; }
+#draft { margin-top:var(--s3); display:flex; flex-direction:column; gap:var(--s3); }
+.intake-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.5rem; }
+.intake-doc { border:1px solid var(--line); border-left:3px solid var(--line);
+  border-radius:var(--radius-sm); padding:.5rem .7rem; background:var(--surface); }
+.intake-doc.role-formula { border-left-color:var(--primary-d); }
+.intake-doc.role-fragrance { border-left-color:var(--warn); }
+.idoc-head { display:flex; align-items:center; gap:.45rem; flex-wrap:wrap; }
+.idoc-head svg { color:var(--primary-d); flex:0 0 auto; }
+.idoc-file { font-weight:600; font-size:.88rem; word-break:break-word; }
+.idoc-role { font-size:.72rem; color:#54514b; background:var(--surface-2);
+  border:1px solid var(--line); border-radius:999px; padding:.05rem .5rem; }
+.idoc-status { font-size:.78rem; color:var(--muted); margin-left:auto; }
+.idoc-status.ok { color:var(--primary-d); font-weight:600; }
+.idoc-status.warn { color:var(--warn); font-weight:700; }
+.idoc-notes { margin-top:.35rem; }
+.idoc-notes summary { font-size:.78rem; color:var(--muted); cursor:pointer; }
+.idoc-notes ul { margin:.3rem 0 0; padding-left:1.1rem; font-size:.8rem; color:#54514b; }
+.intake-flags { background:var(--warn-soft); border:1px solid var(--warn-line);
+  border-radius:var(--radius-sm); padding:.55rem .7rem; font-size:.82rem; color:#4a3a1c; }
+.intake-flags ul { margin:.3rem 0 0; padding-left:1.1rem; }
 
-/* избор на дестинация: нова съставка или допълни съществуваща */
-.di-dest-wrap { flex-direction:row; align-items:center; gap:.35rem; color:#54514b; }
-.di-dest { font-size:.8rem; padding:.2rem .35rem; border:1px solid var(--line);
-  border-radius:var(--radius-sm); background:var(--surface); max-width:14rem; }
-
-/* съответствие „файл → ред“ при масово прикачване на TDS */
-.di-map { display:flex; align-items:center; gap:.4rem; margin-top:.35rem; flex-wrap:wrap; }
-.di-arrow { color:var(--primary-d); font-weight:700; }
-.di-match { font-size:.74rem; color:var(--muted); }
-.draft-item.matched { border-color:#bcd2c4; background:var(--primary-soft); }
-.draft-item.matched .di-match { color:var(--primary-d); font-weight:600; }
-.di-conflicts { list-style:none; margin:.2rem 0 0; padding:0; }
-.cf-panel { background:var(--warn-soft); border:1px solid var(--line);
-  border-radius:var(--radius-sm); padding:.55rem .7rem; display:flex; flex-direction:column; gap:.4rem; }
-.cf-panel > strong { font-size:.82rem; }
-.cf-row { display:flex; flex-direction:column; gap:.2rem; }
-.cf-label { font-size:.76rem; font-weight:700; color:#54514b; }
-.cf-opt { font-size:.8rem; display:flex; align-items:center; gap:.35rem; }
-.cf-opt span { font-weight:600; }
-.cf-apply { align-self:flex-start; }
+/* провенанс + непълни редове във формата (рецепта без съответен документ) */
+.ingredient .row-doc { grid-column:1 / -1; margin:.1rem 0 0; font-size:.74rem; color:var(--muted); }
+.ingredient.incomplete { border-color:var(--warn-line); background:#fffaf0; }
+.ingredient .incomplete-hint { grid-column:1 / -1; margin:.15rem 0 0; font-size:.78rem;
+  color:var(--warn); font-weight:600; }
 
 /* запазен състав от даташийта */
 .comp-wrap { gap:.3rem; }

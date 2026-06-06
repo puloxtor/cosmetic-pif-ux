@@ -75,7 +75,7 @@
     if (proposed) row.appendChild(confirmBtn());
     var del = el("button", { type: "button", class: "icon-btn", "aria-label": "Премахни съставката" }, SVG_TRASH);
     del.addEventListener("click", function () {
-      var card = row.closest(".ingredient"); row.remove(); syncProposed(card);
+      var card = row.closest(".ingredient"); row.remove(); syncProposed(card); syncIncomplete(card);
     });
     row.appendChild(del);
     return row;
@@ -104,7 +104,7 @@
       escAttr(a && a.pct) + '">'));
     if (proposed) row.appendChild(confirmBtn());
     var del = el("button", { type: "button", class: "icon-btn", "aria-label": "Премахни алергена" }, SVG_TRASH);
-    del.addEventListener("click", function () { var card = row.closest(".ingredient"); row.remove(); syncProposed(card); });
+    del.addEventListener("click", function () { var card = row.closest(".ingredient"); row.remove(); syncProposed(card); syncIncomplete(card); });
     row.appendChild(del);
     return row;
   }
@@ -113,6 +113,8 @@
     data = data || { name: "", dose: "", inci: "", fragrance: false, allergens: [], composition: null };
     var rich = !!(data.composition && data.composition.length);
     var proposed = !!data.proposed;   // дошло от извличане → чернова до потвърждение
+    // Рисково = алергени: те се потвърждават дори когато съставът се авто-приема.
+    var alProposed = (data.allergensProposed != null) ? !!data.allergensProposed : proposed;
     var card = el("div", { class: "ingredient", role: "listitem" });
 
     card.appendChild(el("label", { class: "field grow" }, 'Съставка<input type="text" class="ing-name" value="' +
@@ -173,14 +175,19 @@
       card.appendChild(fragWrap);
 
       var togInput = tog.querySelector("input");
-      function syncFrag() { card.classList.toggle("is-fragrance", togInput.checked); }
+      function syncFrag() { card.classList.toggle("is-fragrance", togInput.checked); syncIncomplete(card); }
       togInput.addEventListener("change", syncFrag);
-      (data.allergens || []).forEach(function (a) { allergens.appendChild(allergenRow(a, proposed)); });
+      (data.allergens || []).forEach(function (a) { allergens.appendChild(allergenRow(a, alProposed)); });
       if (data.fragrance && (!data.allergens || !data.allergens.length)) allergens.appendChild(allergenRow());
       syncFrag();
     }
 
+    if (data.doc) {       // провенанс: кой документ е попълнил тази суровина
+      card.setAttribute("data-doc", data.doc);
+      card.appendChild(el("p", { class: "row-doc" }, "📎 от: " + escHtml(data.doc)));
+    }
     syncProposed(card);   // вдига черновата лента, ако има непотвърдени стойности
+    syncIncomplete(card); // маркира ред без INCI (рецепта без съответен документ)
     return card;
   }
 
@@ -220,6 +227,31 @@
     var btn = card.querySelector(".confirm-all-al");
     if (!btn) return;
     btn.hidden = card.querySelectorAll(".allergens .allergen-row[data-proposed]").length < 2;
+  }
+
+  // Ред е „непълен“, ако има име, но НЯМА разпознат INCI/състав (и не е аромат).
+  // Така рецепта без съответен документ не влиза тихо в изчислението с името на
+  // суровината вместо INCI (точно това разваляше генерирания INCI списък преди).
+  function rowResolved(card) {
+    if (readConstituents(card)) return true;             // многосъставен състав
+    var frag = card.querySelector(".ing-frag");
+    if (frag && frag.checked) return true;               // аромат (носи алергени)
+    var inci = (card.querySelector(".ing-inci") || {}).value || "";
+    return !!inci.trim();
+  }
+  function syncIncomplete(card) {
+    if (!card) return;
+    var nameEl = card.querySelector(".ing-name");
+    var named = nameEl && nameEl.value.trim();
+    var bad = !!named && !rowResolved(card);
+    card.classList.toggle("incomplete", bad);
+    var hint = card.querySelector(".incomplete-hint");
+    if (bad && !hint) {
+      card.appendChild(el("p", { class: "incomplete-hint" },
+        "⚠ няма INCI — добави документ за тази суровина или въведи INCI ръчно"));
+    } else if (!bad && hint) {
+      hint.remove();
+    }
   }
   // Сваля „предложение“ от един елемент (вход, съставка или алерген) и маха бутона.
   function confirmValue(node) {
@@ -263,18 +295,26 @@
     document.querySelectorAll("#ingredients .ingredient").forEach(function (card) {
       var nm = card.querySelector(".ing-name").value.trim();
       if (!nm) return;
+
+      var comp = readConstituents(card);             // многосъставен състав от даташийт
+      var fragEl = card.querySelector(".ing-frag");
+      var isFrag = !!(fragEl && fragEl.checked);
+      var inciEl = card.querySelector(".ing-inci");
+      var inci = ((inciEl && inciEl.value) || "").trim();
+
+      // Ред без разпознат INCI/състав НЕ се записва (иначе името на суровината би
+      // изтекло като INCI, а и енджинът не приема суровина без състав). Такъв ред
+      // е „непълен“ и вече блокира изчислението (виж htmx:configRequest).
+      if (!comp && !isFrag && !inci) return;
+
       var dose = num(card.querySelector(".ing-dose").value, 0);
       lines.push("  - name: " + yq(nm));
       lines.push("    dose_pct: " + dose);
 
-      var comp = readConstituents(card);             // многосъставен състав от даташийт
       if (comp) {
         lines.push("    composition:");
         comp.forEach(function (c) { lines.push(compLine(c)); });
-        return;
-      }
-      var fragEl = card.querySelector(".ing-frag");
-      if (fragEl && fragEl.checked) {                // аромат + алергени
+      } else if (isFrag) {                           // аромат + алергени
         lines.push("    is_fragrance: true");
         lines.push("    allergens:");
         card.querySelectorAll(".allergen-row").forEach(function (ar) {
@@ -283,7 +323,6 @@
           lines.push("      - { name: " + yq(an) + ", pct_in_fragrance: " + num(ar.querySelector(".al-pct").value, 0) + " }");
         });
       } else {                                       // обикновена едно-INCI суровина
-        var inci = (card.querySelector(".ing-inci").value || "").trim() || nm;
         lines.push("    composition:");
         lines.push("      - { inci_name: " + yq(inci) + ", pct: 100 }");
       }
@@ -327,7 +366,6 @@
 
   // --- добавяне / прикачване от извлечена чернова ---
   // Документ може да е НОВА съставка ИЛИ да допълни вече добавена (без дубликат).
-  var ROW_SEQ = 0;
   function norm(s) { return String(s == null ? "" : s).toLowerCase().replace(/\s+/g, " ").trim(); }
 
   // Чете жив ред от формата обратно в модел (огледало на ingredientCard).
@@ -423,40 +461,6 @@
     oldCard.parentNode.replaceChild(fresh, oldCard);
     return fresh;
   }
-  function finishAttach(card, model) {
-    model.proposed = true;   // данните идват от документ → чернова до потвърждение
-    var fresh = replaceCard(card, model);
-    toast("Допълнена съставка: " + (model.name || ""));
-    fresh.scrollIntoView({ behavior: "smooth", block: "center" });
-    focusFirstEmptyDose();
-  }
-  function attachToCard(card, rm, host) {
-    var cur = readCard(card), doc = normalizeRm(rm);
-    var r = computeMerge(cur, doc, {});
-    if (!r.conflicts.length) { finishAttach(card, r.model); return; }
-    if (!host) { finishAttach(card, r.model); return; }   // няма къде да питам → пази текущото
-    host.hidden = false;
-    var rows = r.conflicts.map(function (c) {
-      return '<div class="cf-row"><div class="cf-label">' + escHtml(c.label) + '</div>' +
-        '<label class="cf-opt"><input type="radio" name="cf-' + c.key + '" value="keep" checked> ' +
-        'Запази: <span>' + escHtml(c.current || "—") + '</span></label>' +
-        '<label class="cf-opt"><input type="radio" name="cf-' + c.key + '" value="replace"> ' +
-        'От документа: <span>' + escHtml(c.document || "—") + '</span></label></div>';
-    }).join("");
-    host.innerHTML = '<div class="cf-panel"><strong>Тази съставка вече има данни — избери какво да остане:</strong>' +
-      rows + '<button type="button" class="btn-primary small cf-apply">Приложи</button></div>';
-    host.querySelector(".cf-apply").addEventListener("click", function () {
-      var choices = {};
-      r.conflicts.forEach(function (c) {
-        var sel = host.querySelector('input[name="cf-' + c.key + '"]:checked');
-        choices[c.key] = sel ? sel.value : "keep";
-      });
-      var model = computeMerge(cur, doc, choices).model;
-      host.hidden = true; host.innerHTML = "";
-      finishAttach(card, model);
-    });
-  }
-
   // --- прилика по име: масово съпоставяне на TDS файл към съществуващ ред ---
   // Имената на даташийт-файлове носят шум („Olcopher TDS“, „…_datasheet_v2“).
   // matchKey маха тези думи/пунктуация, за да остане идентичността на суровината.
@@ -500,69 +504,108 @@
     return bestScore >= MATCH_MIN ? best : null;
   }
 
-  // Пълни „Към“ селектите от ЖИВИТЕ редове; пази избора на ползвателя.
-  function populateDestinations() {
-    document.querySelectorAll("#ingredients .ingredient").forEach(function (card) {
-      if (!card.getAttribute("data-row-id")) card.setAttribute("data-row-id", "r" + (ROW_SEQ++));
-    });
-    var ids = {};
-    var labels = [];
-    document.querySelectorAll("#ingredients .ingredient").forEach(function (card) {
-      var cm = readCard(card), id = card.getAttribute("data-row-id");
-      var label = cm.name || "(без име)";
-      var inci = modelInci(cm); if (inci) label += " · " + inci;
-      ids[id] = true; labels.push({ id: id, label: label });
-    });
-    document.querySelectorAll(".doc-card .di-dest").forEach(function (sel) {
-      var docCard = sel.closest(".doc-card"), rms = [];
-      try { rms = JSON.parse(docCard.getAttribute("data-rms") || "[]"); } catch (e) {}
-      var rm = rms[parseInt(sel.getAttribute("data-index"), 10) || 0];
-      var match = rm ? matchExistingRow(rm) : null;
-      var matchId = match ? match.getAttribute("data-row-id") : "";
-      var desired = (sel.value && ids[sel.value]) ? sel.value : (matchId || "new");
-      var opts = ['<option value="new"' + (desired === "new" ? " selected" : "") + '>➕ Нова съставка</option>'];
-      labels.forEach(function (o) {
-        opts.push('<option value="' + o.id + '"' + (desired === o.id ? " selected" : "") +
-          '>' + escHtml(o.label) + '</option>');
+  // --- консолидиране на качения КОМПЛЕКТ (документ-първо, без ръчно мапване) ---
+  // Един комплект = една рецепта + по един подкрепящ документ на суровина (+ аромат).
+  // Рецептата дава редовете и дозите; всеки подкрепящ документ се съпоставя по име
+  // и допълва INCI/състав/алергени към своя ред. Съставът се АВТО-ПРИЕМА; алергените
+  // (рисково) остават за потвърждение. Виж docs/UX_INTAKE_SPEC.md §2.
+  function collectDocs() {
+    var out = [];
+    document.querySelectorAll("#draft .intake-doc").forEach(function (li) {
+      var rms = [];
+      try { rms = JSON.parse(li.getAttribute("data-rms") || "[]"); } catch (e) {}
+      out.push({
+        el: li,
+        role: li.getAttribute("data-role") || "ingredient",
+        filename: li.getAttribute("data-filename") || "",
+        error: !!li.getAttribute("data-error"),
+        rms: rms
       });
-      sel.innerHTML = opts.join("");
-      reflectMapping(sel.closest(".draft-item"), desired !== "new");
     });
+    return out;
+  }
+  function setDocStatus(li, text, cls) {
+    var s = li.querySelector(".idoc-status");
+    if (s) { s.textContent = text; s.className = "idoc-status " + (cls || ""); }
+  }
+  function renderIntakeFlags(flags) {
+    var box = document.querySelector("#draft .intake-flags");
+    if (!box) return;
+    if (!flags.length) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML = '<strong>Провери тези несъответствия преди изчисление:</strong><ul>' +
+      flags.map(function (f) { return "<li>" + escHtml(f) + "</li>"; }).join("") + "</ul>";
   }
 
-  // Отразява предложеното съответствие „файл → ред“: подсветка, бележка и етикет
-  // на бутона. Самият избор е в падащото меню (.di-dest) — ползвателят коригира там.
-  function reflectMapping(item, isMatch) {
-    if (!item) return;
-    item.classList.toggle("matched", isMatch);
-    var hint = item.querySelector(".di-match");
-    if (hint) hint.textContent = isMatch
-      ? "съвпадение по име — потвърди или коригирай реда"
-      : "нов ред (няма съвпадение)";
-    var btn = item.querySelector(".di-confirm");
-    if (btn) btn.textContent = isMatch ? "Потвърди" : "Добави";
+  // Допълва съществуващ ред от документ: ПАЗИ име/доза, пълни само INCI/състав/
+  // алергени. Съставът се приема (proposed=false); алергените се маркират за потвърждение.
+  function autoAttach(card, rm, filename) {
+    var cur = readCard(card), doc = normalizeRm(rm);
+    var model = computeMerge(cur, doc, {}).model;   // {} → запазва текущото, пълни празните
+    model.proposed = false;
+    model.allergensProposed = !!model.fragrance && !!(model.allergens && model.allergens.length);
+    if (filename) model.doc = filename;
+    return replaceCard(card, model);
   }
 
-  // Прилага един извлечен елемент към избраната дестинация.
-  function applyItem(docCard, idx) {
-    var rms = [];
-    try { rms = JSON.parse(docCard.getAttribute("data-rms") || "[]"); } catch (e) {}
-    var rm = rms[idx];
-    if (!rm) return null;
-    var sel = docCard.querySelector('.di-dest[data-index="' + idx + '"]');
-    var dest = sel ? sel.value : "new";
-    if (dest && dest !== "new") {
-      var card = document.querySelector('#ingredients .ingredient[data-row-id="' + dest + '"]');
-      if (card) {
-        var host = docCard.querySelector('.di-conflicts[data-index="' + idx + '"]');
-        attachToCard(card, rm, host);
-        return "attach";
-      }
+  function consolidateExtract() {
+    var docs = collectDocs();
+    var usable = docs.filter(function (d) { return !d.error && d.rms.length; });
+    var formulaDocs = usable.filter(function (d) { return d.role === "formula"; });
+    var supportDocs = usable.filter(function (d) { return d.role !== "formula"; });
+    var box = document.getElementById("ingredients");
+    var flags = [];
+
+    // 1) Рецепта → скелет от редове (име + доза). Тя е източникът на редовете.
+    if (formulaDocs.length && box) {
+      box.innerHTML = "";
+      formulaDocs.forEach(function (d) {
+        d.rms.forEach(function (rm) {
+          var m = normalizeRm(rm);
+          appendIngredient({ name: m.name, dose: m.dose, inci: "", fragrance: false, allergens: [] });
+        });
+        setDocStatus(d.el, "рецепта · " + d.rms.length + " реда", "ok");
+      });
     }
-    var model = normalizeRm(rm);
-    model.proposed = true;            // извлечена стойност → чернова до потвърждение
-    appendIngredient(model);
-    return "new";
+
+    // 2) Подкрепящи документи → авто-съпоставяне към ред + допълване.
+    supportDocs.forEach(function (d) {
+      var matched = 0, made = 0;
+      d.rms.forEach(function (rm) {
+        var card = matchExistingRow(rm);
+        if (card) {
+          var before = norm(readCard(card).name);
+          autoAttach(card, rm, d.filename);
+          matched++;
+          var dn = norm(rm.name || "");
+          if (before && dn && before !== dn && nameSimilarity(before, dn) < 1)
+            flags.push("Провери име: документ „" + (rm.name || d.filename) + "“ → ред „" + before + "“.");
+        } else {
+          var model = normalizeRm(rm);
+          model.proposed = false;
+          model.allergensProposed = !!model.fragrance;   // нов ароматен ред → потвърди алергените
+          model.doc = d.filename;
+          appendIngredient(model);
+          made++;
+        }
+      });
+      var parts = [];
+      if (matched) parts.push("→ " + matched + " ред(а)");
+      if (made) parts.push(made + " нов(и)");
+      setDocStatus(d.el, parts.join(" · ") || "няма съставки", (made && !matched) ? "warn" : "ok");
+      if (made && !matched)
+        flags.push("„" + d.filename + "“ не съвпадна с ред от рецептата — добавен е като нов (провери дозата).");
+    });
+
+    // 3) Редове без INCI (рецепта без съответен документ) → флаг + блокаж при изчисление.
+    document.querySelectorAll("#ingredients .ingredient").forEach(syncIncomplete);
+    var incompletes = document.querySelectorAll("#ingredients .ingredient.incomplete").length;
+    if (incompletes)
+      flags.push(incompletes + " ред(а) без INCI — добави документ за тях или въведи INCI ръчно.");
+
+    renderIntakeFlags(flags);
+    if (usable.length) toast("Готово — прегледай таблицата и потвърди алергените");
+    focusFirstEmptyDose();
   }
 
   // --- инициализация ---
@@ -584,6 +627,9 @@
     var t = e.target;
     if (!t || !t.classList) return;
     if (t.classList.contains("ing-dose")) t.classList.remove("invalid");
+    if (t.classList.contains("ing-name") || t.classList.contains("ing-inci")) {
+      syncIncomplete(t.closest(".ingredient"));   // въведен INCI → редът вече не е „непълен“
+    }
     if (t.classList.contains("ing-inci") && t.hasAttribute("data-proposed")) {
       confirmValue(t); syncProposed(t.closest(".ingredient"));
     }
@@ -601,19 +647,7 @@
     }
   });
 
-  // „Към“ селектите се опресняват при отваряне, за да отразяват текущите редове
-  document.body.addEventListener("mousedown", function (e) {
-    if (e.target && e.target.closest && e.target.closest(".di-dest")) populateDestinations();
-  });
-
-  // Коригиране на съответствието „файл → ред“ от падащото меню → опресни презентацията.
-  document.body.addEventListener("change", function (e) {
-    var t = e.target;
-    if (t && t.classList && t.classList.contains("di-dest"))
-      reflectMapping(t.closest(".draft-item"), t.value !== "new");
-  });
-
-  // делегиране на бутоните „Добави“ / „Добави всички“ (вмъкнати чрез fetch)
+  // делегиране на бутоните за потвърждение/копиране (вмъкнати чрез fetch)
   document.body.addEventListener("click", function (e) {
     // „Потвърди“ → сваля предложението от конкретната стойност (INCI вход или съставка)
     var cv = e.target.closest ? e.target.closest(".confirm-val") : null;
@@ -644,33 +678,6 @@
       return;
     }
 
-    var all = e.target.closest ? e.target.closest("[data-add-all]") : null;
-    if (all) {
-      // „Добави всички“ потвърждава ВСЯКО съответствие наведнъж: всеки елемент
-      // отива според своята дестинация — съвпадналите се сливат в реда си, а
-      // тези без съвпадение („Нова съставка“) стават нови редове. Нищо не се пропуска.
-      var docAll = all.closest(".doc-card"), rmsAll = [];
-      try { rmsAll = JSON.parse(docAll.getAttribute("data-rms") || "[]"); } catch (err) {}
-      var added = 0, merged = 0;
-      rmsAll.forEach(function (_, i) {
-        if (applyItem(docAll, i) === "new") added++; else merged++;
-      });
-      var parts = [];
-      if (merged) parts.push("слети " + merged + " в съществуващи редове");
-      if (added) parts.push("добавени " + added + " нови");
-      toast(parts.length ? parts.join(" · ") + " — провери числата" : "Няма какво да добавя");
-      focusFirstEmptyDose();
-      return;
-    }
-    var one = e.target.closest ? e.target.closest("[data-add-one]") : null;
-    if (one) {
-      var idx = parseInt(one.getAttribute("data-index"), 10) || 0;
-      if (applyItem(one.closest(".doc-card"), idx) === "new") {
-        toast("Добавена 1 съставка");
-        focusFirstEmptyDose();
-      }
-      return;
-    }
     // копиране в клипборда
     var copy = e.target.closest ? e.target.closest("[data-copy]") : null;
     if (copy) {
@@ -738,8 +745,10 @@
       .then(function (html) {
         if (!draft) return;
         draft.innerHTML = html;
-        populateDestinations();   // напълни „Към“ селектите от текущата формула
-        draft.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        consolidateExtract();     // авто: рецепта → редове, документи → допълване
+        // показваме попълнената ТАБЛИЦА (горе), а не само прегледа на файловете
+        var ing = document.getElementById("ingredients");
+        (ing || draft).scrollIntoView({ behavior: "smooth", block: "start" });
       })
       .catch(function (err) {
         if (draft) draft.innerHTML = '<div class="alarms err-box" role="alert">' +
@@ -796,14 +805,26 @@
       else { toast("Въведи доза за всяка съставка"); if (prob.el) prob.el.focus(); }
       return;
     }
-    // карантина: нито една НЕПОТВЪРДЕНА (AI) стойност не минава към изчисление
-    var prop = document.querySelector('#ingredients [data-proposed]');
+    // Коректност: ред без INCI не минава (иначе името на суровината би изтекло
+    // като INCI). Рецепта без съответен документ → добави документа или INCI ръчно.
+    var inc = document.querySelector('#ingredients .ingredient.incomplete');
+    if (inc) {
+      e.preventDefault();
+      toast("Има ред без INCI — добави документ за тази суровина или въведи INCI ръчно");
+      inc.scrollIntoView({ behavior: "smooth", block: "center" });
+      var ie = inc.querySelector(".ing-inci"); if (ie) ie.focus();
+      return;
+    }
+    // Карантина само за РИСКОВИТЕ стойности: извлечените алергени се потвърждават
+    // спрямо IFRA справката (съставът се авто-приема). Член 10 / docs §0.
+    var prop = document.querySelector('#ingredients .allergen-row[data-proposed]');
     if (prop) {
       e.preventDefault();
-      toast("Потвърди или премахни извлечените INCI стойности (бутон „Потвърди“) спрямо източника");
+      toast("Потвърди извлечените алергени (бутон „Потвърди“) спрямо IFRA справката");
       var pcard = prop.closest(".ingredient") || prop;
       pcard.scrollIntoView({ behavior: "smooth", block: "center" });
-      var cb = pcard.querySelector(".confirm-val"); if (cb) cb.focus();
+      var cb = pcard.querySelector(".confirm-val") || pcard.querySelector(".confirm-all-al");
+      if (cb) cb.focus();
       return;
     }
     var y = buildYaml();
@@ -811,4 +832,16 @@
     if (ta) ta.value = y;
     e.detail.parameters["formula"] = y;
   });
+
+  // Тестова кукичка за DOM тестове без браузър (jsdom). Активна САМО когато тестът
+  // предварително зададе window.__PIF_TEST__ — в браузъра остава недокосната.
+  if (typeof window !== "undefined" && window.__PIF_TEST__) {
+    window.__PIF_TEST__ = {
+      buildYaml: buildYaml,
+      consolidateExtract: consolidateExtract,
+      appendIngredient: appendIngredient,
+      ingredientCard: ingredientCard,
+      syncIncomplete: syncIncomplete
+    };
+  }
 })();

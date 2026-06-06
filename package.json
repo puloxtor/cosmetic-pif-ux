@@ -1,0 +1,13 @@
+{
+  "name": "cosmetic-pif-ux-frontend-tests",
+  "private": true,
+  "version": "0.0.0",
+  "description": "jsdom тестове за клиентската логика на app.js (консолидиране на качения комплект + сериализация към YAML). Стартирай: npm install && npm test.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}
