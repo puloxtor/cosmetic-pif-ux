@@ -115,27 +115,57 @@ def filter_candidates(rms: list[dict]) -> tuple[list[dict], int]:
     return rms, dropped
 
 
-def extract_structured(data: bytes, filename: str, kind: str, ocr_mode: str):
-    """Качен документ → (raw_materials: list[dict], notes: list[str]).
+def _has_payload(rms: list[dict]) -> bool:
+    """Има ли извлеченото реален състав/алергени (а не само име без INCI)?"""
+    for rm in rms or []:
+        if rm.get("composition") or rm.get("allergens") or rm.get("is_fragrance"):
+            return True
+    return False
 
-    Връща структурираните чернови суровини, ПОЧИСТЕНИ от не-INCI боклук
-    (правни бележки, адреси, спец-редове), за да не могат да станат съставки.
-    Числата са ПРЕДЛОЖЕНИЕ — проверяват се от човек.
-    """
-    suffix = os.path.splitext(filename)[1] or ".bin"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
-        tf.write(data)
-        path = tf.name
-    try:
-        name = os.path.splitext(os.path.basename(filename))[0]
-        rms, notes = extract_drafts(path, kind=kind, ocr_mode=ocr_mode, name=name)
-    finally:
-        os.unlink(path)
+
+def _extract_and_filter(path: str, kind: str, ocr_mode: str, name: str):
+    """Едно извличане през енджина + почистване на не-INCI боклука."""
+    rms, notes = extract_drafts(path, kind=kind, ocr_mode=ocr_mode, name=name)
     rms, dropped = filter_candidates(rms)
     if dropped:
         notes.append(
             f"{name}: пропуснати {dropped} реда, които не приличат на INCI "
             "(правен/табличен/адресен текст). Провери дали не липсва реална съставка.")
+    return rms, notes
+
+
+def extract_structured(data: bytes, filename: str, kind: str, ocr_mode: str):
+    """Качен документ → (raw_materials: list[dict], notes: list[str]).
+
+    Връща структурираните чернови суровини, ПОЧИСТЕНИ от не-INCI боклук. Числата
+    са ПРЕДЛОЖЕНИЕ — проверяват се от човек.
+
+    Резервно AI-зрение: детерминистичното четене на PDF е чувствително към
+    оформлението и често изважда текст, но не намира таблицата със състава. Ако не
+    излезе нито състав, нито алергени (и има ключ), препрочитаме СЪЩИЯ документ с
+    AI-зрение, за да се извлече INCI-то директно от документа.
+    """
+    suffix = os.path.splitext(filename)[1] or ".bin"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
+        tf.write(data)
+        path = tf.name
+    name = os.path.splitext(os.path.basename(filename))[0]
+    try:
+        rms, notes = _extract_and_filter(path, kind, ocr_mode, name)
+        # Рецептата (kind=formula) няма състав по дефиниция — резервното зрение е
+        # само за съставкови/ароматни документи, където очакваме INCI/алергени.
+        if (ocr_mode != "force" and kind != "formula" and not _has_payload(rms)
+                and os.environ.get("ANTHROPIC_API_KEY")):
+            try:
+                rms2, notes2 = _extract_and_filter(path, kind, "force", name)
+            except Exception:
+                rms2, notes2 = None, None
+            if rms2 and _has_payload(rms2):
+                rms, notes = rms2, notes2 + [
+                    f"{name}: детерминистичното четене не намери състав — "
+                    "препрочетено с AI-зрение."]
+    finally:
+        os.unlink(path)
     return rms, notes
 
 

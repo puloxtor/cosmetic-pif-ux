@@ -185,6 +185,60 @@ raw_materials:
     assert "Peace fragrance" not in r.text
 
 
+def test_extract_falls_back_to_vision_when_deterministic_empty(monkeypatch):
+    """Ако детерминистичното четене не намери състав, препрочита с AI-зрение."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    seen = []
+
+    def fake(path, kind, ocr_mode, name):
+        seen.append(ocr_mode)
+        if ocr_mode == "force":
+            return ([{"name": name, "composition": [
+                {"inci_name": "Prunus Amygdalus Dulcis Oil", "pct": 100}]}], [])
+        return ([{"name": name, "composition": []}], [])     # детерминистично: нищо
+
+    monkeypatch.setattr(engine, "extract_drafts", fake)
+    rms, notes = engine.extract_structured(b"%PDF dummy", "Almond Oil.pdf", "composition", "auto")
+    assert "force" in seen                                    # препрочетено с AI-зрение
+    assert any(c["inci_name"] == "Prunus Amygdalus Dulcis Oil"
+               for rm in rms for c in rm.get("composition", []))
+
+
+def test_extract_no_vision_fallback_without_key(monkeypatch):
+    """Без ключ не се опитва AI-зрение (само едно четене)."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    seen = []
+
+    monkeypatch.setattr(engine, "extract_drafts",
+                        lambda path, kind, ocr_mode, name: seen.append(ocr_mode) or
+                        ([{"name": name, "composition": []}], []))
+    engine.extract_structured(b"%PDF", "x.pdf", "composition", "auto")
+    assert seen == ["auto"]                                   # без force
+
+
+def test_extract_no_vision_fallback_when_payload_present(monkeypatch):
+    """Намери ли състав детерминистично, не вика излишно AI-зрение."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    seen = []
+
+    monkeypatch.setattr(engine, "extract_drafts",
+                        lambda path, kind, ocr_mode, name: seen.append(ocr_mode) or
+                        ([{"name": name, "composition": [{"inci_name": "Aqua", "pct": 100}]}], []))
+    engine.extract_structured(b"%PDF", "x.pdf", "composition", "auto")
+    assert seen == ["auto"]                                   # без излишен force
+
+
+def test_extract_formula_kind_skips_vision_fallback(monkeypatch):
+    """Рецепта (kind=formula) няма състав по дефиниция — без излишно AI-зрение."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    seen = []
+    monkeypatch.setattr(engine, "extract_drafts",
+                        lambda path, kind, ocr_mode, name: seen.append(ocr_mode) or
+                        ([{"name": "Бадемово масло", "dose_pct": 69.5, "composition": []}], []))
+    engine.extract_structured(b"\xff\xd8", "recipe.jpg", "formula", "auto")
+    assert seen == ["auto"]                                   # без force за рецепта
+
+
 def test_compute_sample_default_works():
     r = client.post("/compute", data={"formula": SAMPLE_FORMULA})
     assert r.status_code == 200
