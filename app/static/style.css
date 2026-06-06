@@ -176,6 +176,12 @@ pre.inci, pre.draftyaml, pre.cpsr {
 .uv-tag { font-size:.76rem; font-weight:700; color:var(--warn); display:inline-flex; align-items:center; gap:.35rem; }
 .yaml-ack { margin-top:.5rem; font-size:.82rem; }
 
+/* прикачване на даташийт към конкретен ред */
+.row-attach { flex-basis:100%; margin-top:.35rem; }
+.tds-btn { color:var(--primary-d); }
+.tds-note { flex-basis:100%; margin-top:.35rem; font-size:.8rem; color:var(--muted); }
+.tds-note.err { color:var(--err); }
+
 /* предложена (непотвърдена) стойност — чернова, не влиза в изчислението */
 .proposed input, input.proposed { border:1px dashed var(--warn) !important; background:#fff6e6; }
 .confirm-val { color:var(--warn); border-color:var(--warn-line); font-weight:700; }

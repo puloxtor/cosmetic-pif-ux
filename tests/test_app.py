@@ -86,6 +86,30 @@ def test_extract_rejects_oversize_file():
     assert "твърде голям" in r.text
 
 
+def test_extract_one_returns_json_for_a_single_row(monkeypatch):
+    """Бутонът „Прикачи даташийт“ извиква /extract_one и получава JSON за сливане."""
+    rms = [{"name": "Sweet Almond Oil", "dose_pct": "TODO",
+            "composition": [{"inci_name": "Prunus Amygdalus Dulcis Oil", "pct": 100}]}]
+    monkeypatch.setattr(engine, "extract_structured", lambda *a, **k: (rms, ["провери числата"]))
+    r = client.post("/extract_one", data={"type": "composition", "ocr": "never"},
+                    files={"file": ("almond_tds.pdf", b"%PDF dummy", "application/pdf")})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["error"] is None
+    assert j["notes"] == ["провери числата"]
+    assert j["rms"][0]["composition"][0]["inci_name"] == "Prunus Amygdalus Dulcis Oil"
+
+
+def test_extract_one_rejects_bad_extension():
+    """Валидирането на файла важи и за per-row качването."""
+    r = client.post("/extract_one", data={"type": "composition", "ocr": "never"},
+                    files={"file": ("evil.exe", b"MZ", "application/octet-stream")})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["error"] and "Неподдържан" in j["error"]
+    assert j["rms"] == []
+
+
 def test_extract_rejects_too_many_files():
     files = [("files", (f"f{i}.pdf", b"%PDF", "application/pdf")) for i in range(21)]
     r = client.post("/extract", data={"type": "auto", "ocr": "never"}, files=files)

@@ -175,6 +175,26 @@
       syncFrag();
     }
 
+    // Прикачи даташийт КЪМ ТОЗИ РЕД — без гадаене на дестинация по име/INCI.
+    var tdsWrap = el("div", { class: "row-attach" });
+    var tdsInput = el("input", { type: "file", class: "tds-input",
+      accept: ".pdf,.png,.jpg,.jpeg,.webp", hidden: "hidden" });
+    var tdsBtn = el("button", { type: "button", class: "btn-ghost small tds-btn" },
+      "📎 Прикачи даташийт");
+    var tdsHost = el("div", { class: "di-conflicts", hidden: "hidden" });
+    var tdsNote = el("div", { class: "tds-note", hidden: "hidden" });
+    tdsBtn.addEventListener("click", function () { tdsInput.click(); });
+    tdsInput.addEventListener("change", function () {
+      var f = tdsInput.files && tdsInput.files[0];
+      if (f) attachDatasheet(card, f, tdsHost, tdsNote);
+      tdsInput.value = "";
+    });
+    tdsWrap.appendChild(tdsBtn);
+    tdsWrap.appendChild(tdsInput);
+    card.appendChild(tdsWrap);
+    card.appendChild(tdsNote);
+    card.appendChild(tdsHost);
+
     syncProposed(card);   // вдига черновата лента, ако има непотвърдени стойности
     return card;
   }
@@ -445,6 +465,38 @@
     });
   }
 
+  // Прикачва даташийт към КОНКРЕТЕН ред: качва един файл → /extract_one → слива
+  // първата суровина в реда през съществуващия attachToCard (пази име+доза).
+  function attachDatasheet(card, file, host, noteEl) {
+    var fd = new FormData();
+    fd.append("file", file, file.name);
+    var frag = card.querySelector(".ing-frag");
+    fd.append("type", (frag && frag.checked) ? "fragrance" : "composition");
+    var o = document.getElementById("ex-ocr");
+    fd.append("ocr", o ? o.value : "auto");
+    tdsNoteShow(noteEl, "Чета даташийта…", false);
+    fetch("/extract_one", { method: "POST", body: fd })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) {
+        if (j.error) { tdsNoteShow(noteEl, j.error, true); return; }
+        var rm = j.rms && j.rms[0];
+        if (!rm) { tdsNoteShow(noteEl, "Нищо не разпознах в този даташийт.", true); return; }
+        tdsNoteShow(noteEl, "", false);                 // успех → скрий бележката
+        if (j.notes && j.notes.length) toast(j.notes.join(" "));
+        attachToCard(card, rm, host);                   // слива в реда (пази име+доза)
+      })
+      .catch(function (err) {
+        tdsNoteShow(noteEl, "Проблем при качването (" + escHtml(err.message) + ").", true);
+      });
+  }
+  function tdsNoteShow(noteEl, msg, isErr) {
+    if (!noteEl) { if (msg) toast(msg); return; }
+    if (!msg) { noteEl.hidden = true; noteEl.textContent = ""; return; }
+    noteEl.hidden = false;
+    noteEl.className = "tds-note" + (isErr ? " err" : "");
+    noteEl.textContent = msg;
+  }
+
   // Auto-match: ред с еднакво (нормализирано) INCI или име. Различни езици
   // (Бадемово масло ↔ Almond Oil) няма да съвпаднат → дефолт „нова“, ползвателят избира.
   function matchExistingRow(rm) {
@@ -572,11 +624,23 @@
 
     var all = e.target.closest ? e.target.closest("[data-add-all]") : null;
     if (all) {
+      // Само СЪВПАДНАЛИ елементи се прикачват наведнъж; несъвпадналите искат
+      // изричен „Добави“ — за да не се създават тихомълком дублирани съставки.
       var docAll = all.closest(".doc-card"), rmsAll = [];
       try { rmsAll = JSON.parse(docAll.getAttribute("data-rms") || "[]"); } catch (err) {}
-      var added = 0;
-      rmsAll.forEach(function (_, i) { if (applyItem(docAll, i) === "new") added++; });
-      if (added) toast(added === 1 ? "Добавена 1 съставка" : "Добавени " + added + " съставки");
+      var attached = 0, skipped = 0;
+      rmsAll.forEach(function (_, i) {
+        var sel = docAll.querySelector('.di-dest[data-index="' + i + '"]');
+        var dest = sel ? sel.value : "new";
+        if (dest && dest !== "new") { applyItem(docAll, i); attached++; }
+        else skipped++;
+      });
+      if (attached && skipped)
+        toast("Прикачени " + attached + "; " + skipped + " без съвпадение — добави ги поотделно");
+      else if (attached)
+        toast(attached === 1 ? "Прикачена 1 съставка" : "Прикачени " + attached + " съставки");
+      else
+        toast("Няма съвпадащи редове — добави всеки поотделно с „Добави“");
       focusFirstEmptyDose();
       return;
     }

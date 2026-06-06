@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -66,6 +66,32 @@ def index(request: Request):
     })
 
 
+async def _process_one(f: UploadFile, type: str, ocr: str) -> dict:
+    """Валидира и извлича ЕДИН файл → {filename, rms, notes, error}.
+
+    Споделя се от /extract (множество файлове) и /extract_one (един ред).
+    Грешка връща се в полето error — никога не събаря UI-я.
+    """
+    name = f.filename or "document"
+    doc = {"filename": name, "rms": [], "notes": [], "error": None}
+    try:
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in ALLOWED_EXT:
+            raise ValueError(
+                f"Неподдържан тип файл „{ext or '?'}“. Разреши: PDF, PNG, JPG, WEBP.")
+        if f.content_type and f.content_type not in ALLOWED_CT:
+            raise ValueError(f"Неочакван тип съдържание „{f.content_type}“.")
+        data = await f.read(MAX_FILE_BYTES + 1)  # ограничено четене
+        if len(data) > MAX_FILE_BYTES:
+            raise ValueError("Файлът е твърде голям (макс. 10 MB).")
+        rms, notes = engine.extract_structured(data, name, type, ocr)
+        doc["rms"] = rms
+        doc["notes"] = notes
+    except Exception as e:  # извличането никога не бива да събаря UI-я
+        doc["error"] = engine.friendly_error(e)
+    return doc
+
+
 @app.post("/extract", response_class=HTMLResponse)
 async def extract(request: Request,
                   files: list[UploadFile] = File(...),
@@ -80,29 +106,23 @@ async def extract(request: Request,
             {"filename": f"{len(files)} файла", "rms": [], "notes": [],
              "error": f"Прекалено много файлове наведнъж (макс. {MAX_FILES})."}]})
 
-    documents = []
-    for f in files:
-        name = f.filename or "document"
-        doc = {"filename": name, "rms": [], "notes": [], "error": None}
-        try:
-            ext = os.path.splitext(name)[1].lower()
-            if ext not in ALLOWED_EXT:
-                raise ValueError(
-                    f"Неподдържан тип файл „{ext or '?'}“. Разреши: PDF, PNG, JPG, WEBP.")
-            if f.content_type and f.content_type not in ALLOWED_CT:
-                raise ValueError(f"Неочакван тип съдържание „{f.content_type}“.")
-            data = await f.read(MAX_FILE_BYTES + 1)  # ограничено четене
-            if len(data) > MAX_FILE_BYTES:
-                raise ValueError("Файлът е твърде голям (макс. 10 MB).")
-            rms, notes = engine.extract_structured(data, name, type, ocr)
-            doc["rms"] = rms
-            doc["notes"] = notes
-        except Exception as e:  # извличането никога не бива да събаря UI-я
-            doc["error"] = engine.friendly_error(e)
-        documents.append(doc)
+    documents = [await _process_one(f, type, ocr) for f in files]
     return templates.TemplateResponse(request, "_draft.html", {
         "documents": documents,
     })
+
+
+@app.post("/extract_one")
+async def extract_one(file: UploadFile = File(...),
+                      type: str = Form("composition"),
+                      ocr: str = Form("auto")):
+    """Един файл, вързан към КОНКРЕТЕН ред → JSON за прикачване от app.js.
+
+    Front-end-ът извиква това от бутона „Прикачи даташийт“ на даден ред и слива
+    резултата в реда (attachToCard), вместо да гадае дестинацията по име/INCI.
+    """
+    doc = await _process_one(file, type, ocr)
+    return JSONResponse({"rms": doc["rms"], "notes": doc["notes"], "error": doc["error"]})
 
 
 @app.post("/compute", response_class=HTMLResponse)
