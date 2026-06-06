@@ -59,6 +59,20 @@ _SCHEMA = {
 }
 
 
+# Потвърдени модели за резервна верига (виж claude-api skill). Първо опитваме
+# конфигурирания/зрителния, после тези — за да не зависи всичко от един идентификатор.
+_FALLBACK_MODELS = ["claude-opus-4-8", "claude-sonnet-4-6"]
+
+
+def _models_to_try(primary: str) -> list:
+    seq, seen = [], set()
+    for m in [primary] + _FALLBACK_MODELS:
+        if m and m not in seen:
+            seen.add(m)
+            seq.append(m)
+    return seq
+
+
 def _call_model(rows: list, docs: list, model: str) -> dict:
     """Изолиран за тестване: вика Claude и връща суровия JSON dict по схемата."""
     import anthropic
@@ -116,10 +130,15 @@ def match_documents(rows: list, docs: list, model: str | None = None) -> dict:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"available": False, "matches": [],
                 "note": "Няма ANTHROPIC_API_KEY — AI съпоставянето е недостъпно."}
-    mdl = model or DEFAULT_MODEL
-    try:
-        raw = _call_model(rows, docs, mdl)
-    except Exception as e:  # мрежа/ключ/пакет/JSON — UX пада към евристика
-        return {"available": False, "matches": [],
-                "note": f"AI съпоставянето не успя: {e}"}
-    return {"available": True, "matches": _validate(raw, len(rows), len(docs)), "model": mdl}
+    # Пробваме верига от ПОТВЪРДЕНИ модели — така един непознат идентификатор не може
+    # тихо да убие съпоставянето (вече ни се случи). Първи е конфигурираният/зрителният.
+    errors = []
+    for mdl in _models_to_try(model or DEFAULT_MODEL):
+        try:
+            raw = _call_model(rows, docs, mdl)
+        except Exception as e:  # мрежа/ключ/пакет/JSON/непознат модел → пробвай следващия
+            errors.append(f"{mdl}: {e}")
+            continue
+        return {"available": True, "matches": _validate(raw, len(rows), len(docs)), "model": mdl}
+    return {"available": False, "matches": [],
+            "note": "AI съпоставянето не успя: " + " | ".join(errors)}
