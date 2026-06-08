@@ -15,6 +15,12 @@
           Не успях да прочета този файл
         </strong>
         <p>{{ doc.error }}</p>
+        {% if "rate_limit" in doc.error or "429" in doc.error or "лимит" in doc.error or "overload" in doc.error.lower() %}
+          <p class="err-hint">AI е претоварено в момента. Изчакай малко и опитай отново, или въведи съставките ръчно.</p>
+        {% else %}
+          <p class="err-hint">Не успях да прочета файла. Провери дали е валиден PDF/изображение или въведи ръчно.</p>
+        {% endif %}
+        <p class="err-hint muted">Можеш да въведеш съставките ръчно в таблицата по-долу.</p>
       </div>
     {% else %}
       {% if doc.notes %}

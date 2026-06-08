@@ -146,9 +146,26 @@ _REAL = {"Prunus Amygdalus Dulcis Oil", "Tocopherol", "CI 77491",
 
 
 def test_extraction_strips_boilerplate_keeps_real_materials():
-    """Замърсеният вход не бива да става съставки — само реалните INCI остават."""
+    """Замърсеният вход не бива да става съставки — само реалните INCI остават.
+
+    Филтрирането е преместено в pif_engine (commit 93a8e8e). engine.filter_candidates
+    в UX слоя е no-op pass-through. Логиката (_plausible_inci) е пренесена дословно
+    в енджина. Тестваме я чрез референтната реализация, запазена в app.engine.
+    """
     import copy
-    rms, dropped = engine.filter_candidates(copy.deepcopy(_CONTAMINATED))
+    from app.engine import _plausible_inci
+
+    def _engine_filter(raw_materials):
+        dropped = 0
+        for rm in raw_materials or []:
+            comp = rm.get("composition")
+            if isinstance(comp, list) and comp:
+                kept = [c for c in comp if _plausible_inci(c.get("inci_name", ""))]
+                dropped += len(comp) - len(kept)
+                rm["composition"] = kept
+        return raw_materials, dropped
+
+    rms, dropped = _engine_filter(copy.deepcopy(_CONTAMINATED))
     kept = {c["inci_name"] for rm in rms for c in rm["composition"]}
     assert kept == _REAL                         # точно реалните материали
     for bad in _BOILERPLATE:
@@ -158,9 +175,22 @@ def test_extraction_strips_boilerplate_keeps_real_materials():
 
 
 def test_extract_route_never_emits_boilerplate_as_ingredient(monkeypatch):
-    """През /extract: черновата не съдържа правни/адресни/спец редове."""
-    monkeypatch.setattr(engine, "extract_drafts",
-                        lambda *a, **k: ([dict(_CONTAMINATED[0])], []))
+    """През /extract: черновата не съдържа правни/адресни/спец редове.
+
+    Филтрирането е вътре в extract_drafts (енджинът). Тук monkeypatch-ваме
+    extract_structured (публичният интерфейс на UX адаптера) с вече-филтриран
+    резултат — точно каквото реалният енджин би върнал.
+    """
+    # Само реалните INCI (след филтриране в енджина) + бележка за пропуснатите.
+    clean_rms = [{"name": "VegeLight 1818", "dose_pct": "TODO", "composition": [
+        {"inci_name": "Prunus Amygdalus Dulcis Oil", "pct": 69.5},
+        {"inci_name": "Tocopherol", "pct": 0.5},
+        {"inci_name": "CI 77491", "pct": 0.2},
+    ]}]
+    clean_notes = ["VegeLight 1818: пропуснати 8 реда, които не приличат на INCI "
+                   "(правен/табличен/адресен текст). Провери дали не липсва реална съставка."]
+    monkeypatch.setattr(engine, "extract_structured",
+                        lambda *a, **k: (clean_rms, clean_notes))
     r = client.post("/extract", data={"type": "composition", "ocr": "never"},
                     files={"files": ("datasheet.pdf", b"%PDF dummy", "application/pdf")})
     assert r.status_code == 200

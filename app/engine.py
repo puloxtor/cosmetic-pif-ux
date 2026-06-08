@@ -33,6 +33,13 @@ def friendly_error(exc: Exception) -> str:
     """
     text = str(exc)
 
+    # Превишен лимит на заявките (HTTP 429 / 529 / overloaded).
+    if ("rate_limit_error" in text or "429" in text
+            or "rate limit" in text.lower() or "overloaded" in text.lower()
+            or "529" in text):
+        return ("Превишен лимит на AI заявките. Изчакай 60 секунди и опитай пак. "
+                "Или качи цифров PDF — той не ползва AI.")
+
     # AI-зрението без ключ (най-честият случай при качване на снимка).
     if ("authentication" in text.lower() or "api_key" in text.lower()
             or "ANTHROPIC_API_KEY" in text):
@@ -104,15 +111,8 @@ def _plausible_inci(name: str) -> bool:
 
 
 def filter_candidates(rms: list[dict]) -> tuple[list[dict], int]:
-    """Маха не-INCI кандидати от композициите. Връща (rms, брой_изхвърлени)."""
-    dropped = 0
-    for rm in rms or []:
-        comp = rm.get("composition")
-        if isinstance(comp, list) and comp:
-            kept = [c for c in comp if _plausible_inci(c.get("inci_name", ""))]
-            dropped += len(comp) - len(kept)
-            rm["composition"] = kept
-    return rms, dropped
+    """No-op pass-through — filtering is now done inside pif_engine.extract_drafts."""
+    return rms, 0
 
 
 def extract_structured(data: bytes, filename: str, kind: str, ocr_mode: str):

@@ -705,6 +705,34 @@
     if (btn) btn.disabled = on;
     if (sp) sp.hidden = !on;
   }
+  // Показва горен банер, ако ВСИЧКИ файлове са получили rate-limit грешка.
+  function isRateLimitError(text) {
+    return text && (text.indexOf("rate_limit") !== -1 || text.indexOf("429") !== -1 ||
+      text.indexOf("лимит") !== -1 || text.toLowerCase().indexOf("overload") !== -1);
+  }
+  function showRateLimitBannerIfNeeded(draft) {
+    var cards = draft.querySelectorAll(".doc-card");
+    if (!cards.length) return;
+    var errCards = draft.querySelectorAll(".doc-card .err-box");
+    if (errCards.length !== cards.length) return;   // поне един успешен
+    // проверяваме дали всички грешки изглеждат като rate-limit
+    var allRateLimit = true;
+    errCards.forEach(function (box) {
+      if (!isRateLimitError(box.textContent)) allRateLimit = false;
+    });
+    if (!allRateLimit) return;
+    var existing = document.getElementById("rate-limit-banner");
+    if (existing) return;
+    var banner = el("div", { id: "rate-limit-banner", class: "rate-limit-banner", role: "status" },
+      'AI не е достъпно в момента — можеш да въведеш съставките ръчно в таблицата.' +
+      '<button type="button" class="banner-dismiss" aria-label="Затвори">✕</button>');
+    banner.querySelector(".banner-dismiss").addEventListener("click", function () {
+      banner.remove();
+    });
+    var main = document.querySelector("main") || document.body;
+    main.insertBefore(banner, main.firstChild);
+  }
+
   function runExtract() {
     var draft = document.getElementById("draft");
     if (!selectedFiles.length) { toast("Избери поне един файл"); return; }
@@ -715,19 +743,21 @@
     fd.append("ocr", o ? o.value : "auto");
     setExtracting(true);
     if (draft) draft.innerHTML = '<p class="muted">Чета документите…</p>';
-    fetch("/extract", { method: "POST", body: fd })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    fetch(“/extract”, { method: “POST”, body: fd })
+      .then(function (r) { if (!r.ok) throw new Error(“HTTP “ + r.status); return r.text(); })
       .then(function (html) {
         if (!draft) return;
         draft.innerHTML = html;
-        populateDestinations();   // напълни „Към“ селектите от текущата формула
-        draft.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        populateDestinations();   // напълни „Към” селектите от текущата формула
+        draft.scrollIntoView({ behavior: “smooth”, block: “nearest” });
+        // ако ВСИЧКИ файлове са върнали rate-limit грешка → показваме горен банер
+        showRateLimitBannerIfNeeded(draft);
       })
       .catch(function (err) {
-        if (draft) draft.innerHTML = '<div class="alarms err-box" role="alert">' +
+        if (draft) draft.innerHTML = '<div class=”alarms err-box” role=”alert”>' +
           '<strong>Възникна проблем при качването</strong>' +
           '<p>Опитай пак. Ако продължава — провери връзката или размера на файловете (' +
-          escHtml(err.message) + ").</p></div>";
+          escHtml(err.message) + “).</p></div>”;
       })
       .finally(function () { setExtracting(false); });
   }
