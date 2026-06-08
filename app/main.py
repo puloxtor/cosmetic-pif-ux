@@ -166,6 +166,13 @@ async def canonicalize_route(request: Request):
     return canonical.canonicalize(items)
 
 
+@app.get("/healthz")
+def healthz():
+    from pif_engine.nomenclature import DECLARABLE_ALLERGENS
+    return {"engine_version": engine.ENGINE_VERSION,
+            "declarable_allergens": len(DECLARABLE_ALLERGENS)}
+
+
 @app.post("/compute", response_class=HTMLResponse)
 def compute(request: Request, formula: str = Form(...), cpsr: str = Form(None)):
     try:
