@@ -285,7 +285,7 @@
     if (bad && !hint) {
       var docName = card.getAttribute("data-doc");
       var msg = docName
-        ? "⚠ няма INCI — „" + escHtml(docName) + "" е прикачен, но INCI не бе разпознат (вероятно сканиран PDF). Въведи INCI ръчно или замени с цифров PDF."
+        ? "⚠ няма INCI — „" + escHtml(docName) + " е прикачен, но INCI не бе разпознат (вероятно сканиран PDF). Въведи INCI ръчно или замени с цифров PDF."
         : "⚠ няма INCI — добави документ за тази суровина или въведи INCI ръчно";
       var hintEl = el("p", { class: "incomplete-hint" });
       hintEl.innerHTML = msg;
