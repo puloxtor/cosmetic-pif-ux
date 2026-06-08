@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import engine, intake, matching
+from . import engine, intake, matching, canonical
 
 BASE = Path(__file__).parent
 app = FastAPI(title="Cosmetic PIF/CPSR UX")
@@ -145,6 +145,22 @@ async def match(request: Request):
     rows = payload.get("rows") or []
     docs = payload.get("docs") or []
     return matching.match_documents(rows, docs)
+
+
+@app.post("/canonicalize")
+async def canonicalize_route(request: Request):
+    """INCI имена → канонични EU INCI (AI ПРЕДЛОЖЕНИЕ; човек потвърждава на гейта).
+
+    JSON {items:[{id,name,kind,context}]} → {available, items, model, note?}. Никога
+    не дава 500: при липсващ ключ/грешка → available=False, UX-ът ползва само регистър.
+    Самото канонизиране е в app/canonical.py.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    items = payload.get("items") or []
+    return canonical.canonicalize(items)
 
 
 @app.post("/compute", response_class=HTMLResponse)

@@ -19,6 +19,35 @@
   function num(s, dflt) { var v = parseFloat(s); return isNaN(v) ? (dflt == null ? 0 : dflt) : v; }
   function isNum(s) { return s !== "" && s != null && !isNaN(parseFloat(s)) && isFinite(s); }
 
+  // --- единен регистър за INCI имена (детерминистично; базово, AI дава точната форма) ---
+  // Само УЕДНАКВЯВА изцяло-главни/изцяло-малки имена към Title Case; имена, които
+  // вече са със смесен регистър (вкл. канонични от AI, напр. „alpha-Isomethyl
+  // Ionone“) се оставят непокътнати. Така „HELIANTHUS ANNUUS SEED OIL“ се изравнява
+  // с „Helianthus Annuus Seed Oil“ (и се слива в енджина), без да разваляме нищо.
+  var INCI_UP = { peg: 1, ppg: 1, pvp: 1, vp: 1, va: 1, sd: 1, mea: 1, dea: 1,
+    tea: 1, edta: 1, bht: 1, bha: 1, tbhq: 1, pca: 1, ci: 1, pg: 1 };
+  function titleToken(tok) {
+    if (!tok) return tok;
+    var low = tok.toLowerCase();
+    if (INCI_UP[low]) return tok.toUpperCase();          // PEG, CI, BHT…
+    if (/^[a-z]+-\d+$/i.test(tok)) {                     // PEG-40, Steareth-2
+      var p = tok.split("-");
+      var head = INCI_UP[p[0].toLowerCase()] ? p[0].toUpperCase()
+        : p[0].charAt(0).toUpperCase() + p[0].slice(1).toLowerCase();
+      return head + "-" + p[1];
+    }
+    if (tok.indexOf("-") > 0) return tok.split("-").map(titleToken).join("-");
+    if (/\d/.test(tok)) return tok;                      // „77491“, числа → както са
+    return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+  }
+  function inciCase(name) {
+    var s = String(name == null ? "" : name).trim().replace(/\s+/g, " ");
+    if (!s) return s;
+    var hasLower = /[a-zа-яё]/.test(s), hasUpper = /[A-ZА-ЯЁ]/.test(s);
+    if (hasLower && hasUpper) return s;                  // вече смесен регистър → не пипай
+    return s.split(" ").map(titleToken).join(" ");
+  }
+
   // --- мапване: чернова суровина от енджина → модел за реда във формата ---
   function isSimpleSingle(comp) {
     if (!comp || comp.length !== 1) return false;
@@ -273,7 +302,7 @@
 
   // --- сериализация форма → YAML ---
   function compLine(c) {
-    var parts = ["inci_name: " + yq(c.inci_name)];
+    var parts = ["inci_name: " + yq(inciCase(c.inci_name))];
     if (c.cas) parts.push("cas: " + yq(c.cas));
     if (c.remainder) parts.push("remainder: true");
     else if (c.range) parts.push("range: [" + num(c.range[0]) + ", " + num(c.range[1]) + "]");
@@ -327,11 +356,11 @@
         card.querySelectorAll(".allergen-row").forEach(function (ar) {
           var an = ar.querySelector(".al-name").value.trim();
           if (!an) return;
-          lines.push("      - { name: " + yq(an) + ", pct_in_fragrance: " + num(ar.querySelector(".al-pct").value, 0) + " }");
+          lines.push("      - { name: " + yq(inciCase(an)) + ", pct_in_fragrance: " + num(ar.querySelector(".al-pct").value, 0) + " }");
         });
       } else {                                       // обикновена едно-INCI суровина
         lines.push("    composition:");
-        lines.push("      - { inci_name: " + yq(inci) + ", pct: 100 }");
+        lines.push("      - { inci_name: " + yq(inciCase(inci)) + ", pct: 100 }");
       }
     });
     return lines.join("\n") + "\n";
@@ -626,6 +655,69 @@
     });
   }
 
+  // INCI имената от живите редове → за AI канонизиране (с препратки към входовете).
+  function collectCanonItems() {
+    var items = [], refs = [];
+    document.querySelectorAll("#ingredients .ingredient").forEach(function (card) {
+      var rowName = ((card.querySelector(".ing-name") || {}).value || "").trim();
+      var csts = card.querySelectorAll(".constituent-row .cst-name");
+      if (csts.length) {
+        Array.prototype.forEach.call(csts, function (inp) {
+          if (inp.value.trim()) { items.push({ id: refs.length, name: inp.value.trim(), kind: "composition", context: rowName }); refs.push({ el: inp, kind: "composition", card: card }); }
+        });
+        return;
+      }
+      var frag = card.querySelector(".ing-frag");
+      if (frag && frag.checked) {
+        card.querySelectorAll(".allergen-row .al-name").forEach(function (inp) {
+          if (inp.value.trim()) { items.push({ id: refs.length, name: inp.value.trim(), kind: "allergen", context: rowName }); refs.push({ el: inp, kind: "allergen", card: card }); }
+        });
+        return;
+      }
+      var inci = card.querySelector(".ing-inci");
+      if (inci && inci.value.trim()) { items.push({ id: refs.length, name: inci.value.trim(), kind: "composition", context: rowName }); refs.push({ el: inci, kind: "composition", card: card }); }
+    });
+    return { items: items, refs: refs };
+  }
+
+  // Прилага каноничните имена: преименува към INCI; маха не-INCI и не-декларируеми
+  // (част от Parfum) вещества. Съставът се авто-приема; алергените остават за потвърждение.
+  function applyCanon(refs, results, flags) {
+    var changed = 0, dropped = 0, cards = [];
+    results.forEach(function (r) {
+      var ref = refs[r.id];
+      if (!ref) return;
+      if (cards.indexOf(ref.card) < 0) cards.push(ref.card);
+      var remove = r.drop || (ref.kind === "allergen" && !r.declarable);
+      if (remove) {
+        var rowEl = ref.el.closest(".constituent-row") || ref.el.closest(".allergen-row");
+        if (rowEl) { rowEl.remove(); dropped++; }
+        else { ref.el.value = ""; }     // проста едно-INCI стойност за махане → изчисти
+        return;
+      }
+      if (r.canonical && r.canonical !== ref.el.value) { ref.el.value = r.canonical; changed++; }
+    });
+    cards.forEach(function (c) { syncProposed(c); syncIncomplete(c); });
+    if (changed) flags.push("Имената са приведени към INCI (" + changed + ") — провери ги.");
+    if (dropped) flags.push("Премахнати " + dropped + " вещества (не са декларируеми алергени / не са INCI; част от Parfum).");
+  }
+
+  // Втора AI стъпка след съпоставянето: канонизира имената на живите редове.
+  function runCanonicalize(flags) {
+    var c = collectCanonItems();
+    if (!c.items.length) return Promise.resolve();
+    return fetch("/canonicalize", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: c.items })
+    })
+      .then(function (r) { return r.ok ? r.json() : { available: false, items: [] }; })
+      .catch(function () { return { available: false, items: [] }; })
+      .then(function (res) {
+        if (res && res.available) applyCanon(c.refs, res.items || [], flags);
+        else flags.push("AI нормализация на имената недостъпна — при изчисление се прилага само единен регистър.");
+      });
+  }
+
   // Финал: маркирай редовете без INCI, покажи флаговете и фокусирай първата празна доза.
   function finishConsolidation(flags, usableCount) {
     syncEmptyState();
@@ -688,6 +780,9 @@
             "съпоставяне между езици/търговски имена" + (res && res.note ? " (" + res.note + ")" : "") +
             ". Падам към проста евристика по име.");
         }
+        return runCanonicalize(flags);   // втора стъпка: канонизиране на имената
+      })
+      .then(function () {
         finishConsolidation(flags, usable.length);
       });
   }
@@ -1038,7 +1133,8 @@
       appendIngredient: appendIngredient,
       ingredientCard: ingredientCard,
       syncIncomplete: syncIncomplete,
-      syncEmptyState: syncEmptyState
+      syncEmptyState: syncEmptyState,
+      inciCase: inciCase
     };
   }
 })();
