@@ -130,9 +130,9 @@ async def _process_one(f: UploadFile, type: str, ocr: str) -> dict:
         ext = os.path.splitext(name)[1].lower()
         if ext not in ALLOWED_EXT:
             raise ValueError(
-                f"Неподдържан тип файл „{ext or '?'}". Разреши: PDF, PNG, JPG, WEBP.")
+                f"Неподдържан тип файл „{ext or '?'}“. Разреши: PDF, PNG, JPG, WEBP.")
         if f.content_type and f.content_type not in ALLOWED_CT:
-            raise ValueError(f"Неочакван тип съдържание „{f.content_type}".")
+            raise ValueError(f"Неочакван тип съдържание „{f.content_type}“.")
         data = await f.read(MAX_FILE_BYTES + 1)  # ограничено четене
         if len(data) > MAX_FILE_BYTES:
             raise ValueError("Файлът е твърде голям (макс. 10 MB).")
