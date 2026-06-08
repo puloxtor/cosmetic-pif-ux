@@ -7,6 +7,7 @@ FastAPI + HTMX UX за козметичния PIF/CPSR енджин.
 """
 from __future__ import annotations
 import hashlib
+import logging
 import os
 from pathlib import Path
 
@@ -74,6 +75,15 @@ def _engine_pin() -> str:
 ASSET_VERSION = _asset_version()
 GIT_COMMIT = _git_commit()
 ENGINE_PIN = _engine_pin()
+
+from pif_engine.nomenclature import DECLARABLE_ALLERGENS as _DA
+_ALLERGEN_COUNT = len(_DA)
+
+_log = logging.getLogger(__name__)
+_log.info(
+    "PIF-UX startup | ux_commit=%s | engine_pin=%s | allergens=%s | assets=%s",
+    GIT_COMMIT, ENGINE_PIN, _ALLERGEN_COUNT, ASSET_VERSION,
+)
 
 # Примерна формула, заредена по подразбиране (работи веднага при Compute).
 SAMPLE_FORMULA = """product:
@@ -202,11 +212,10 @@ async def canonicalize_route(request: Request):
 
 @app.get("/healthz")
 def healthz():
-    from pif_engine.nomenclature import DECLARABLE_ALLERGENS
     return {
         "engine_version": engine.ENGINE_VERSION,
         "engine_pin": ENGINE_PIN,
-        "declarable_allergens": len(DECLARABLE_ALLERGENS),
+        "declarable_allergens": _ALLERGEN_COUNT,
         "ux_commit": GIT_COMMIT,
         "asset_version": ASSET_VERSION,
     }
