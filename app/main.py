@@ -41,7 +41,24 @@ def _asset_version() -> str:
     return h.hexdigest()[:8]
 
 
+def _git_commit() -> str:
+    """Текущия git commit SHA (за Railway deployment tracking)."""
+    git_dir = BASE.parent / ".git"
+    if not git_dir.exists():
+        return "unknown"
+    try:
+        head_file = git_dir / "HEAD"
+        ref = head_file.read_text().strip()
+        if ref.startswith("ref: "):
+            ref_path = git_dir / ref[5:]
+            return ref_path.read_text().strip()[:7]
+        return ref[:7]
+    except Exception:
+        return "unknown"
+
+
 ASSET_VERSION = _asset_version()
+GIT_COMMIT = _git_commit()
 
 # Примерна формула, заредена по подразбиране (работи веднага при Compute).
 SAMPLE_FORMULA = """product:
@@ -79,6 +96,7 @@ def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
         "engine_version": engine.ENGINE_VERSION,
         "asset_version": ASSET_VERSION,
+        "git_commit": GIT_COMMIT,
     })
 
 
@@ -169,8 +187,12 @@ async def canonicalize_route(request: Request):
 @app.get("/healthz")
 def healthz():
     from pif_engine.nomenclature import DECLARABLE_ALLERGENS
-    return {"engine_version": engine.ENGINE_VERSION,
-            "declarable_allergens": len(DECLARABLE_ALLERGENS)}
+    return {
+        "engine_version": engine.ENGINE_VERSION,
+        "declarable_allergens": len(DECLARABLE_ALLERGENS),
+        "ux_commit": GIT_COMMIT,
+        "asset_version": ASSET_VERSION,
+    }
 
 
 @app.post("/compute", response_class=HTMLResponse)
