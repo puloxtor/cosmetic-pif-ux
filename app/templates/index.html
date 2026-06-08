@@ -23,7 +23,13 @@
         <p class="tagline">Състав, INCI по Член 19 и алергени — от твоята рецепта.</p>
       </div>
     </div>
-    <span class="badge" title="Версия на изчислителния енджин">pif-engine v{{ engine_version }}</span>
+    <div class="head-right">
+      <button type="button" id="help-btn" class="help-btn" title="Покажи кратко въведение">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 2.5"/><path d="M12 17h.01"/></svg>
+        Помощ
+      </button>
+      <span class="badge" title="Версия на изчислителния енджин">pif-engine v{{ engine_version }}</span>
+    </div>
   </header>
 
   <main>
@@ -35,10 +41,11 @@
       <form id="formula-form" hx-post="/compute" hx-target="#results" hx-indicator="#spin">
         <div class="field-grid">
           <label class="field">Име на продукта
-            <input type="text" id="p-name" value="Demo Beard Oil" autocomplete="off">
+            <input type="text" id="p-name" value="" placeholder="напр. Beard Oil" autocomplete="off">
           </label>
           <label class="field">Тип
             <select id="p-type">
+              <option value="" selected disabled>— избери тип —</option>
               <option value="leave-on">Остава върху кожата (leave-on)</option>
               <option value="rinse-off">Отмива се (rinse-off)</option>
             </select>
@@ -73,7 +80,7 @@
           <summary>Разширен режим (YAML)</summary>
           <p class="field-hint">За напреднали: ако редактираш тук и оставиш това
           отворено, изпраща се този YAML вместо формата.</p>
-          <textarea name="formula" id="yaml" spellcheck="false" rows="16">{{ sample }}</textarea>
+          <textarea name="formula" id="yaml" spellcheck="false" rows="16" placeholder="# Разширен режим — въведи продуктов YAML тук"></textarea>
           <label class="inline yaml-ack"><input type="checkbox" id="yaml-ack">
           Прегледах този YAML ред по ред</label>
         </details>

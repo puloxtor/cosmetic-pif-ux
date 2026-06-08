@@ -75,7 +75,6 @@ claims:
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
         "engine_version": engine.ENGINE_VERSION,
-        "sample": SAMPLE_FORMULA,
         "asset_version": ASSET_VERSION,
     })
 

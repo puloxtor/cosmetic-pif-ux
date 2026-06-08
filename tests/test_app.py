@@ -24,6 +24,18 @@ def test_index_ok():
     assert "Формула" in r.text
 
 
+def test_index_clean_first_run_no_demo_and_type_unselected():
+    """Нова сесия: без примерни данни, без предварително избран тип, с бутон Помощ."""
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Demo Beard Oil" not in r.text              # няма демо име
+    assert "Sweet Almond Oil" not in r.text            # няма демо съставки/YAML
+    assert "— избери тип —" in r.text                  # типът не е избран предварително
+    assert 'value="" selected disabled' in r.text       # плейсхолдър опция за типа
+    assert 'id="p-amount" value="2.0"' in r.text        # разумните дефолти остават
+    assert 'id="help-btn"' in r.text                    # повторно отваряне на въведението
+
+
 def test_index_has_form_builder():
     """Началната страница показва форма за съставки, не само суров YAML."""
     r = client.get("/")

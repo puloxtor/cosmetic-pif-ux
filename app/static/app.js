@@ -7,14 +7,6 @@
 
   var SVG_TRASH = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
 
-  // Демо продукт (същият като примерната формула) — за да не е празно при старт.
-  var DEMO = [
-    { name: "Sweet Almond Oil", dose: "96.5", inci: "Prunus Amygdalus Dulcis Oil", fragrance: false, allergens: [] },
-    { name: "Parfum (пример)", dose: "3.0", inci: "", fragrance: true,
-      allergens: [{ name: "Limonene", pct: "4.0" }, { name: "Linalool", pct: "1.5" }] },
-    { name: "Tocopherol", dose: "0.5", inci: "Tocopherol", fragrance: false, allergens: [] }
-  ];
-
   function el(tag, attrs, html) {
     var n = document.createElement(tag);
     if (attrs) Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
@@ -149,7 +141,7 @@
     }
 
     var del = el("button", { type: "button", class: "icon-btn row-del", "aria-label": "Премахни съставката" }, SVG_TRASH);
-    del.addEventListener("click", function () { card.remove(); });
+    del.addEventListener("click", function () { card.remove(); syncEmptyState(); });
     card.appendChild(del);
 
     // Аромат-секция (прогресивно разкриване) — само за не-богати редове.
@@ -196,7 +188,22 @@
     if (!box) return null;
     var card = ingredientCard(data);
     box.appendChild(card);
+    syncEmptyState();
     return card;
+  }
+
+  // Подсказка в празния списък със съставки (стартът вече е без демо данни).
+  function syncEmptyState() {
+    var box = document.getElementById("ingredients");
+    if (!box) return;
+    var has = !!box.querySelector(".ingredient");
+    var hint = box.querySelector(".ingredients-empty");
+    if (!has && !hint) {
+      box.appendChild(el("p", { class: "ingredients-empty" },
+        "Все още няма съставки — качи рецептата по-долу или натисни „Добави съставка“."));
+    } else if (has && hint) {
+      hint.remove();
+    }
   }
 
   // --- карантина на ИЗВЛЕЧЕНИ СТОЙНОСТИ (Член 10: човек потвърждава всяка) ---
@@ -277,7 +284,7 @@
 
   function buildYaml() {
     var name = document.getElementById("p-name").value || "Продукт";
-    var type = document.getElementById("p-type").value || "leave-on";
+    var type = document.getElementById("p-type").value;   // гарантирано избран от гейта
     var amount = num(document.getElementById("p-amount").value, 1.0);
     var countries = (document.getElementById("p-countries").value || "BG")
       .split(",").map(function (c) { return c.trim(); }).filter(Boolean);
@@ -621,6 +628,7 @@
 
   // Финал: маркирай редовете без INCI, покажи флаговете и фокусирай първата празна доза.
   function finishConsolidation(flags, usableCount) {
+    syncEmptyState();
     document.querySelectorAll("#ingredients .ingredient").forEach(syncIncomplete);
     var incompletes = document.querySelectorAll("#ingredients .ingredient.incomplete").length;
     if (incompletes)
@@ -686,9 +694,7 @@
 
   // --- инициализация ---
   document.addEventListener("DOMContentLoaded", function () {
-    var box = document.getElementById("ingredients");
-    // DEMO се пропуска под тест (виж window.__PIF_TEST__), за да е детерминистично.
-    if (box && !window.__PIF_TEST__) DEMO.forEach(function (d) { box.appendChild(ingredientCard(d)); });
+    syncEmptyState();   // празен старт (без демо данни) → подсказка в списъка
 
     var add = document.getElementById("add-ingredient");
     if (add) add.addEventListener("click", function () {
@@ -696,6 +702,9 @@
       var inp = card && card.querySelector(".ing-name");
       if (inp) inp.focus();
     });
+
+    var help = document.getElementById("help-btn");
+    if (help) help.addEventListener("click", startTour);
   });
 
   // махане на „invalid“ щом потребителят започне да пише доза;
@@ -825,9 +834,14 @@
         return consolidateExtract();   // авто: рецепта → редове + AI съпоставяне на документите
       })
       .then(function () {
-        // показваме попълнената ТАБЛИЦА (горе), а не само прегледа на файловете
-        var ing = document.getElementById("ingredients");
-        if (ing) ing.scrollIntoView({ behavior: "smooth", block: "start" });
+        // насочваме към бутона „Изчисли“ — плъзване + кратък акцент + подсказка
+        var btn = document.querySelector('#formula-form button[type="submit"]');
+        if (btn) {
+          btn.scrollIntoView({ behavior: "smooth", block: "center" });
+          btn.classList.add("cta-pulse");
+          setTimeout(function () { btn.classList.remove("cta-pulse"); }, 6000);
+        }
+        toast("Прегледай таблицата и натисни „Изчисли таблица + INCI“");
       })
       .catch(function (err) {
         if (draft) draft.innerHTML = '<div class="alarms err-box" role="alert">' +
@@ -868,12 +882,28 @@
     if (adv && adv.open) {
       // разширен режим → праща се ръчният YAML, но иска изрично потвърждение,
       // че е прегледан (свободният текст не може да се провери ред по ред).
+      var ta = document.getElementById("yaml");
+      if (ta && !ta.value.trim()) {       // полето вече е празно по подразбиране
+        e.preventDefault();
+        toast("Въведи YAML или затвори разширения режим.");
+        ta.focus();
+        return;
+      }
       var ackY = document.getElementById("yaml-ack");
       if (!ackY || !ackY.checked) {
         e.preventDefault();
         toast("Отбележи „Прегледах този YAML ред по ред“ преди изчисление");
         if (ackY) ackY.focus();
       }
+      return;
+    }
+
+    // Тип на продукта се избира съзнателно (определя прага за алергени).
+    var typeEl = document.getElementById("p-type");
+    if (typeEl && !typeEl.value) {
+      e.preventDefault();
+      toast("Избери тип на продукта (остава върху кожата / отмива се)");
+      typeEl.focus();
       return;
     }
 
@@ -912,6 +942,93 @@
     e.detail.parameters["formula"] = y;
   });
 
+  // след изчисление: плъзни до резултата (важно на телефон — резултатът е по-долу)
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (e.target && e.target.id === "results")
+      e.target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // ---------- кратко въведение със стъпкови подсказки (еднократно, с пропускане) ----------
+  var TOUR = [
+    { sel: "#formula-form .field-grid",
+      text: "Започни оттук: въведи име на продукта и избери тип (остава върху кожата или отмива се)." },
+    { sel: "#dropzone",
+      text: "Пусни снимката на рецептата и всички даташийти наведнъж — приложението ги разпознава и попълва състава автоматично." },
+    { sel: "#formula-form button[type=\"submit\"]",
+      text: "Накрая натисни „Изчисли таблица + INCI“, за да получиш таблицата и INCI списъка." }
+  ];
+  var tour = { i: 0, ring: null, tip: null, onResize: null };
+
+  function tourKey(e) { if (e.key === "Escape") tourEnd(true); }
+  function tourEnd(persist) {
+    if (tour.ring) tour.ring.remove();
+    if (tour.tip) tour.tip.remove();
+    tour.ring = tour.tip = null;
+    if (tour.onResize) { window.removeEventListener("resize", tour.onResize); tour.onResize = null; }
+    document.removeEventListener("keydown", tourKey);
+    if (persist) { try { localStorage.setItem("pif_onboarded", "1"); } catch (e) {} }
+  }
+  function tourPlace() {
+    var step = TOUR[tour.i], t = step && document.querySelector(step.sel);
+    if (!t || !tour.ring) return;
+    var r = t.getBoundingClientRect(), pad = 6;
+    var top = r.top + window.pageYOffset - pad, left = r.left + window.pageXOffset - pad;
+    tour.ring.style.top = top + "px"; tour.ring.style.left = left + "px";
+    tour.ring.style.width = (r.width + pad * 2) + "px";
+    tour.ring.style.height = (r.height + pad * 2) + "px";
+    var tip = tour.tip, vw = document.documentElement.clientWidth;
+    var below = (r.bottom + 170) < window.innerHeight;
+    var tTop = below ? (top + r.height + pad * 2 + 10) : (top - 10 - tip.offsetHeight);
+    if (tTop < window.pageYOffset + 8) tTop = window.pageYOffset + 8;
+    var tLeft = Math.min(left, window.pageXOffset + vw - tip.offsetWidth - 8);
+    if (tLeft < window.pageXOffset + 8) tLeft = window.pageXOffset + 8;
+    tip.style.top = tTop + "px"; tip.style.left = tLeft + "px";
+  }
+  function tourShow(i) {
+    if (i < 0) i = 0;
+    tour.i = i;
+    var step = TOUR[i], t = document.querySelector(step.sel);
+    if (!t) { return (i + 1 < TOUR.length) ? tourShow(i + 1) : tourEnd(true); }
+    if (!tour.ring) {
+      tour.ring = el("div", { class: "tour-ring" });
+      tour.tip = el("div", { class: "tour-tip", role: "dialog", "aria-live": "polite" });
+      document.body.appendChild(tour.ring);
+      document.body.appendChild(tour.tip);
+      tour.onResize = tourPlace;
+      window.addEventListener("resize", tour.onResize);
+      document.addEventListener("keydown", tourKey);
+    }
+    var last = i === TOUR.length - 1;
+    tour.tip.innerHTML =
+      '<p class="tour-text">' + escHtml(step.text) + "</p>" +
+      '<div class="tour-nav"><span class="tour-count">' + (i + 1) + "/" + TOUR.length + "</span>" +
+      '<span class="tour-btns">' +
+      (i > 0 ? '<button type="button" class="btn-ghost small" data-tour="back">Назад</button>' : "") +
+      '<button type="button" class="btn-primary small" data-tour="' + (last ? "done" : "next") + '">' +
+      (last ? "Готово" : "Напред") + "</button></span></div>" +
+      '<button type="button" class="tour-skip" data-tour="skip">Пропусни</button>';
+    t.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(tourPlace, 350);
+  }
+  function startTour() { tourEnd(false); tourShow(0); }
+
+  document.body.addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-tour]") : null;
+    if (!b) return;
+    var a = b.getAttribute("data-tour");
+    if (a === "next") tourShow(tour.i + 1);
+    else if (a === "back") tourShow(tour.i - 1);
+    else tourEnd(true);                 // „Готово“ или „Пропусни“ → не показвай повече
+  });
+
+  // първо посещение → пусни въведението (след оформление); тестовете го пропускат
+  window.addEventListener("load", function () {
+    if (window.__PIF_TEST__) return;
+    var seen = "1";
+    try { seen = localStorage.getItem("pif_onboarded"); } catch (e) {}
+    if (!seen) requestAnimationFrame(function () { setTimeout(startTour, 300); });
+  });
+
   // Тестова кукичка за DOM тестове без браузър (jsdom). Активна САМО когато тестът
   // предварително зададе window.__PIF_TEST__ — в браузъра остава недокосната.
   if (typeof window !== "undefined" && window.__PIF_TEST__) {
@@ -920,7 +1037,8 @@
       consolidateExtract: consolidateExtract,
       appendIngredient: appendIngredient,
       ingredientCard: ingredientCard,
-      syncIncomplete: syncIncomplete
+      syncIncomplete: syncIncomplete,
+      syncEmptyState: syncEmptyState
     };
   }
 })();

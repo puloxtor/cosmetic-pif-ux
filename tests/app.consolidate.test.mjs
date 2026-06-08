@@ -114,6 +114,17 @@ test("съставът се авто-приема (без карантина) �
   assert.equal(q(w, "#ingredients .constituent-row[data-proposed]").length, 0, "съставът авто-приет");
 });
 
+test("празен списък със съставки показва подсказка (без демо данни)", () => {
+  const w = boot(goodMap);
+  const T = w.__PIF_TEST__;
+  T.syncEmptyState();
+  assert.ok(w.document.querySelector("#ingredients .ingredients-empty"),
+    "празният списък показва подсказка");
+  T.appendIngredient({ name: "Тест", dose: "1", inci: "Aqua" });
+  assert.ok(!w.document.querySelector("#ingredients .ingredients-empty"),
+    "подсказката изчезва при добавен ред");
+});
+
 test("без AI (available:false) пада към евристика и предупреждава за ключа", async () => {
   const w = boot(() => ({ available: false, matches: [], note: "no key" }));
   w.document.getElementById("draft").innerHTML = intakeHTML(SET);
