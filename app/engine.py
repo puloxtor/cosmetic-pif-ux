@@ -33,6 +33,13 @@ def friendly_error(exc: Exception) -> str:
     """
     text = str(exc)
 
+    # Превишен лимит на заявките (HTTP 429 / 529 / overloaded).
+    if ("rate_limit_error" in text or "429" in text
+            or "rate limit" in text.lower() or "overloaded" in text.lower()
+            or "529" in text):
+        return ("Превишен лимит на AI заявките. Изчакай 60 секунди и опитай пак. "
+                "Или качи цифров PDF — той не ползва AI.")
+
     # AI-зрението без ключ (най-честият случай при качване на снимка).
     if ("authentication" in text.lower() or "api_key" in text.lower()
             or "ANTHROPIC_API_KEY" in text):

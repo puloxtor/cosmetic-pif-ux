@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap&subset=cyrillic,latin" rel="stylesheet">
-  <!-- HTMX от CDN. За офлайн: свали в app/static/htmx.min.js и смени src (виж README). -->
-  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+  <!-- HTMX е вендориран локално (app/static/htmx.min.js) — без CDN зависимост. -->
+  <script src="/static/htmx.min.js"></script>
   <script defer src="/static/app.js?v={{ asset_version }}"></script>
 </head>
 <body>

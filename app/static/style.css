@@ -307,3 +307,20 @@ footer { padding:var(--s4) var(--s5); color:var(--muted); font-size:.8rem; max-w
 .tour-btns .btn-ghost, .tour-btns .btn-primary { margin-top:0; }
 .tour-skip { display:block; margin:.5rem 0 0; background:none; border:none; color:var(--muted);
   font-size:.78rem; text-decoration:underline; cursor:pointer; padding:0; }
+
+/* rate-limit / AI-unavailable banner */
+.rate-limit-banner {
+  display:flex; align-items:center; justify-content:space-between; gap:var(--s4);
+  padding:var(--s3) var(--s5); background:var(--warn-soft);
+  border-bottom:1px solid var(--warn-line); color:var(--warn);
+  font-size:.9rem; font-weight:500;
+}
+.rate-limit-banner .banner-dismiss {
+  background:none; border:none; cursor:pointer; color:var(--warn);
+  font-size:1rem; padding:.2rem .4rem; border-radius:4px; flex-shrink:0;
+}
+.rate-limit-banner .banner-dismiss:hover { background:var(--warn-line); }
+
+/* contextual hint inside error boxes */
+.err-hint { margin:.4rem 0 0; font-size:.85rem; }
+.err-hint.muted { color:var(--muted); font-style:italic; }

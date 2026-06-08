@@ -20,7 +20,8 @@ raw_materials:
 def test_index_ok():
     r = client.get("/")
     assert r.status_code == 200
-    assert "pif-engine" in r.text
+    # Версията на енджина се показва през /healthz (футърът беше преработен).
+    assert "healthz" in r.text
     assert "Формула" in r.text
 
 
@@ -377,3 +378,54 @@ def test_extract_handles_multiple_files_and_per_file_error(monkeypatch):
     assert "a.pdf" in r.text and "b.jpg" in r.text   # две карти
     assert 'role="alert"' in r.text                  # грешката за втория файл
     assert "ANTHROPIC_API_KEY" in r.text             # дружелюбно съобщение
+
+
+# --- регресионни тестове за деплой устойчивостта (rate-limit, пин, JS синтаксис) ---
+
+def test_friendly_error_rate_limit():
+    """429/529/overloaded → разбираемо съобщение, НЕ суров JSON (виж скрийншота)."""
+    raw_429 = ("Error code: 429 - {'type': 'error', 'error': {'type': "
+               "'rate_limit_error', 'message': \"This request would exceed your "
+               "organization's rate limit of 10,000 input tokens per minute\"}}")
+    msg = engine.friendly_error(Exception(raw_429))
+    assert "rate_limit_error" not in msg          # суровият текст не изтича
+    assert "Превишен лимит" in msg
+    # 529 overloaded също се хваща
+    assert "Превишен лимит" in engine.friendly_error(Exception("Error code: 529 overloaded_error"))
+    # липсващ ключ продължава да дава своето съобщение (не се поглъща от rate-limit клона)
+    assert "ANTHROPIC_API_KEY" in engine.friendly_error(Exception("missing ANTHROPIC_API_KEY"))
+
+
+def test_extract_route_rate_limit_shows_friendly_hint(monkeypatch):
+    """През /extract: 429 от енджина → дружелюбна подсказка, не суров JSON."""
+    def boom(*a, **k):
+        raise Exception("Error code: 429 rate_limit_error: too many tokens per minute")
+    monkeypatch.setattr(engine, "extract_structured", boom)
+    r = client.post("/extract", data={"type": "auto", "ocr": "auto"},
+                    files={"files": ("scan.jpg", b"\xff\xd8 x", "image/jpeg")})
+    assert r.status_code == 200
+    assert "Превишен лимит" in r.text
+    assert "rate_limit_error" not in r.text       # суровият JSON не се показва
+
+
+def test_engine_pin_has_required_fixes():
+    """Пинът трябва да сочи енджин с Haiku по подразбиране + boilerplate филтър.
+
+    Спира деплой със стар пин (напр. Opus по подразбиране → 429), виж screenshot.
+    """
+    from pif_engine.extraction.vision import DEFAULT_MODEL
+    assert "haiku" in DEFAULT_MODEL.lower()        # не Opus по подразбиране
+    import importlib
+    assert importlib.import_module("pif_engine.extraction.filter")  # филтърът е в енджина
+
+
+def test_app_js_is_valid_syntax():
+    """app.js трябва да е валиден JS (хваща напр. typographic кавички в кода)."""
+    import shutil, subprocess, os
+    node = shutil.which("node")
+    if not node:
+        import pytest
+        pytest.skip("node не е наличен — пропускаме JS синтактичната проверка")
+    js = os.path.join(os.path.dirname(__file__), "..", "app", "static", "app.js")
+    res = subprocess.run([node, "--check", js], capture_output=True, text=True)
+    assert res.returncode == 0, f"app.js синтактична грешка:\n{res.stderr}"

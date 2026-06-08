@@ -916,6 +916,31 @@
     if (btn) btn.disabled = on;
     if (sp) sp.hidden = !on;
   }
+  // Показва горен банер, ако ВСИЧКИ файлове са получили rate-limit грешка.
+  function isRateLimitError(text) {
+    return text && (text.indexOf("rate_limit") !== -1 || text.indexOf("429") !== -1 ||
+      text.indexOf("лимит") !== -1 || text.toLowerCase().indexOf("overload") !== -1);
+  }
+  function showRateLimitBannerIfNeeded(draft) {
+    var cards = draft.querySelectorAll(".doc-card");
+    if (!cards.length) return;
+    var errCards = draft.querySelectorAll(".doc-card .err-box");
+    if (errCards.length !== cards.length) return;   // поне един успешен
+    var allRateLimit = true;
+    errCards.forEach(function (box) {
+      if (!isRateLimitError(box.textContent)) allRateLimit = false;
+    });
+    if (!allRateLimit) return;
+    if (document.getElementById("rate-limit-banner")) return;
+    var banner = el("div", { id: "rate-limit-banner", class: "rate-limit-banner", role: "status" },
+      "AI не е достъпно в момента — можеш да въведеш съставките ръчно в таблицата." +
+      '<button type="button" class="banner-dismiss" aria-label="Затвори">✕</button>');
+    banner.querySelector(".banner-dismiss").addEventListener("click", function () {
+      banner.remove();
+    });
+    var main = document.querySelector("main") || document.body;
+    main.insertBefore(banner, main.firstChild);
+  }
   function runExtract() {
     var draft = document.getElementById("draft");
     if (!selectedFiles.length) { toast("Избери поне един файл"); return; }
@@ -931,6 +956,7 @@
       .then(function (html) {
         if (!draft) return;
         draft.innerHTML = html;
+        showRateLimitBannerIfNeeded(draft);   // всички файлове с rate-limit → горен банер
         return consolidateExtract();   // авто: рецепта → редове + AI съпоставяне на документите
       })
       .then(function () {
