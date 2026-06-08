@@ -1,6 +1,6 @@
 # Енджинът се ПИНОВА към конкретен комит на cosmetic-pif-poc (единствен източник
 # на истина). UX-ът само го вика; не може да го променя.
-pif-engine[extraction] @ git+https://github.com/puloxtor/cosmetic-pif-poc@d8fe9e9923a39e2b7dfe9d921c3bb89b2f625657
+pif-engine[extraction] @ git+https://github.com/puloxtor/cosmetic-pif-poc@8164c3d913922c3e20153a6bb69be5542cf60081
 
 fastapi>=0.110
 uvicorn[standard]>=0.27
