@@ -41,7 +41,39 @@ def _asset_version() -> str:
     return h.hexdigest()[:8]
 
 
+def _git_commit() -> str:
+    """Текущия git commit SHA (за Railway deployment tracking)."""
+    railway_sha = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")
+    if railway_sha:
+        return railway_sha[:7]
+    git_dir = BASE.parent / ".git"
+    if not git_dir.exists():
+        return "unknown"
+    try:
+        head_file = git_dir / "HEAD"
+        ref = head_file.read_text().strip()
+        if ref.startswith("ref: "):
+            ref_path = git_dir / ref[5:]
+            return ref_path.read_text().strip()[:7]
+        return ref[:7]
+    except Exception:
+        return "unknown"
+
+
+def _engine_pin() -> str:
+    """Извлича 7-знаковия SHA на закачения engine commit от requirements.txt."""
+    import re
+    try:
+        req = (BASE.parent / "requirements.txt").read_text()
+        m = re.search(r"@([0-9a-f]{7,40})", req)
+        return m.group(1)[:7] if m else "?"
+    except Exception:
+        return "?"
+
+
 ASSET_VERSION = _asset_version()
+GIT_COMMIT = _git_commit()
+ENGINE_PIN = _engine_pin()
 
 # Примерна формула, заредена по подразбиране (работи веднага при Compute).
 SAMPLE_FORMULA = """product:
@@ -78,7 +110,9 @@ claims:
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {
         "engine_version": engine.ENGINE_VERSION,
+        "engine_pin": ENGINE_PIN,
         "asset_version": ASSET_VERSION,
+        "git_commit": GIT_COMMIT,
     })
 
 
@@ -96,9 +130,9 @@ async def _process_one(f: UploadFile, type: str, ocr: str) -> dict:
         ext = os.path.splitext(name)[1].lower()
         if ext not in ALLOWED_EXT:
             raise ValueError(
-                f"Неподдържан тип файл „{ext or '?'}“. Разреши: PDF, PNG, JPG, WEBP.")
+                f"Неподдържан тип файл „{ext or '?'}". Разреши: PDF, PNG, JPG, WEBP.")
         if f.content_type and f.content_type not in ALLOWED_CT:
-            raise ValueError(f"Неочакван тип съдържание „{f.content_type}“.")
+            raise ValueError(f"Неочакван тип съдържание „{f.content_type}".")
         data = await f.read(MAX_FILE_BYTES + 1)  # ограничено четене
         if len(data) > MAX_FILE_BYTES:
             raise ValueError("Файлът е твърде голям (макс. 10 MB).")
@@ -164,6 +198,18 @@ async def canonicalize_route(request: Request):
         payload = {}
     items = payload.get("items") or []
     return canonical.canonicalize(items)
+
+
+@app.get("/healthz")
+def healthz():
+    from pif_engine.nomenclature import DECLARABLE_ALLERGENS
+    return {
+        "engine_version": engine.ENGINE_VERSION,
+        "engine_pin": ENGINE_PIN,
+        "declarable_allergens": len(DECLARABLE_ALLERGENS),
+        "ux_commit": GIT_COMMIT,
+        "asset_version": ASSET_VERSION,
+    }
 
 
 @app.post("/compute", response_class=HTMLResponse)
