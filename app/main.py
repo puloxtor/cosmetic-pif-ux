@@ -11,6 +11,8 @@ import logging
 import os
 from pathlib import Path
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,15 +21,12 @@ from fastapi.templating import Jinja2Templates
 from . import engine, intake, matching, canonical
 
 BASE = Path(__file__).parent
-app = FastAPI(title="Cosmetic PIF/CPSR UX")
 
 # Валидиране на качените документи (UX/устойчивост — не е енджин логика).
 MAX_FILES = 20
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB на файл
 ALLOWED_EXT = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
 ALLOWED_CT = {"application/pdf", "image/png", "image/jpeg", "image/webp"}
-app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
-templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 
 def _asset_version() -> str:
@@ -80,10 +79,20 @@ from pif_engine.nomenclature import DECLARABLE_ALLERGENS as _DA
 _ALLERGEN_COUNT = len(_DA)
 
 _log = logging.getLogger(__name__)
-_log.info(
-    "PIF-UX startup | ux_commit=%s | engine_pin=%s | allergens=%s | assets=%s",
-    GIT_COMMIT, ENGINE_PIN, _ALLERGEN_COUNT, ASSET_VERSION,
-)
+
+
+@asynccontextmanager
+async def _lifespan(app):
+    _log.info(
+        "PIF-UX startup | ux_commit=%s | engine_pin=%s | allergens=%s | assets=%s",
+        GIT_COMMIT, ENGINE_PIN, _ALLERGEN_COUNT, ASSET_VERSION,
+    )
+    yield
+
+
+app = FastAPI(title="Cosmetic PIF/CPSR UX", lifespan=_lifespan)
+app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
+templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 # Примерна формула, заредена по подразбиране (работи веднага при Compute).
 SAMPLE_FORMULA = """product:
