@@ -30,12 +30,15 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 
 def _asset_version() -> str:
-    """Кратък хеш на app.js → кеш-busting на ?v=…, за да не сервира деплоят стар JS."""
-    try:
-        data = (BASE / "static" / "app.js").read_bytes()
-        return hashlib.sha1(data).hexdigest()[:8]
-    except OSError:
-        return "dev"
+    """Кратък хеш на статиката (app.js + style.css) → кеш-busting на ?v=…, за да не
+    сервира деплоят стар JS/CSS (промяна в който и да е файл вдига версията)."""
+    h = hashlib.sha1()
+    for fn in ("app.js", "style.css"):
+        try:
+            h.update((BASE / "static" / fn).read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()[:8]
 
 
 ASSET_VERSION = _asset_version()

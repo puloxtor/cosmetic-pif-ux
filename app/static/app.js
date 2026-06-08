@@ -1103,7 +1103,8 @@
       (last ? "Готово" : "Напред") + "</button></span></div>" +
       '<button type="button" class="tour-skip" data-tour="skip">Пропусни</button>';
     t.scrollIntoView({ behavior: "smooth", block: "center" });
-    setTimeout(tourPlace, 350);
+    requestAnimationFrame(tourPlace);   // постави веднага
+    setTimeout(tourPlace, 380);         // и пак, след като скролът улегне
   }
   function startTour() { tourEnd(false); tourShow(0); }
 
