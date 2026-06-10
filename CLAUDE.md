@@ -117,6 +117,17 @@ node --experimental-vm-modules node_modules/.bin/jest  # JS тестове
 curl http://localhost:8000/healthz
 ```
 
+## Известни пропуски и отложена работа
+
+Виж **`../cosmetic-pif-poc/ROADMAP.md`** за списък на:
+- **Finding E** (BHT от fragrance secondary table) — engine gap, deferred
+- **Finding F** (Safrole prohibited substance flagging) — requires CPSR auto-generation +
+  UX warning banner
+- Други gaps (real toxicology data, TTC/Cramer, multi-product validation, .docx output)
+
+Кога UX-ът трябва да се изменя (напр. за Finding F flagging), ROADMAP.md ще го маркира
+**(U)** и ще каже какво точно.
+
 ## Правила
 
 - UX-ът не съдържа регулаторна логика — тя е само в енджина.
@@ -124,3 +135,4 @@ curl http://localhost:8000/healthz
   пряко от `pif_engine` в `main.py` или другите модули.
 - При промяна на публичния API на енджина — актуализирай `engine.py` веднага.
 - Пускай тестовете след всяка промяна.
+- Кога затваряш gap от ROADMAP.md — актуализирай това `CLAUDE.md` + engine-ът `CLAUDE.md`.
