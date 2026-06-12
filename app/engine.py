@@ -15,14 +15,20 @@ from pif_engine import (
     __version__ as ENGINE_VERSION,
     build_product, consolidated_concentrations, generate_inci,
     allergens_to_declare, calculate_allergens, generate_cpsr,
+    product_is_safe, ComputeResult, REGULATORY_REFS,
+    PifInputError, PifDataGapError,
 )
 from pif_engine.allergens import ALLERGEN_THRESHOLD
+from pif_engine.nomenclature import DECLARABLE_ALLERGENS
+from pif_engine.cpsr import check_documentation_gates
 from pif_engine.extraction.router import extract_drafts
 from pif_engine.extraction.draft import to_yaml
 
+# Единственият мост към pif_engine: main.py взима тези през engine.*, за да НЕ
+# внася pif_engine пряко (правило от CLAUDE.md). Затова ги ре-експортираме.
 __all__ = ["ENGINE_VERSION", "extract_document", "extract_structured",
            "filter_candidates", "compute_from_yaml", "allergen_table",
-           "friendly_error"]
+           "friendly_error", "DECLARABLE_ALLERGENS", "REGULATORY_REFS"]
 
 
 def friendly_error(exc: Exception) -> str:
@@ -32,6 +38,15 @@ def friendly_error(exc: Exception) -> str:
     логиката идват само от енджина; тук само превеждаме съобщенията.
     """
     text = str(exc)
+
+    # Типизирани грешки от енджина (R2) — разклоняваме по ТИП, не по текста.
+    if isinstance(exc, PifDataGapError):
+        return (f"Липсват задължителни данни за суровина. {text} "
+                "Всяка суровина има доза (dose_pct) и състав (composition), "
+                "или е аромат (is_fragrance с алергени).")
+    if isinstance(exc, PifInputError):
+        return (f"Проблем в структурата на формулата. {text} "
+                "Провери секциите „product“ и „raw_materials“.")
 
     # Превишен лимит на заявките (HTTP 429 / 529 / overloaded).
     if ("rate_limit_error" in text or "429" in text
@@ -230,14 +245,35 @@ def allergen_table(product) -> list[dict]:
     return rows
 
 
-def compute_from_yaml(yaml_text: str, include_cpsr: bool = False) -> dict:
-    """Продуктов YAML → таблица + INCI + алергени + аларми (детерминистично)."""
+def _hard_blockers(product) -> list[str]:
+    """Твърди блокери (R6) — НЕ се отхвърлят с потвърждение в UX-а.
+
+    Само оркестрация на публични енджин функции (без собствена математика):
+    липсваща задължителна документация (CoA/SDS/IFRA) и превишен лимит на
+    ограничена съставка (`check_documentation_gates`), плюс MoS < 100
+    (`product_is_safe`). Тези блокират подписването, а не само се показват.
+    """
+    issues = list(check_documentation_gates(product))
+    _, mos_results = product_is_safe(product)
+    for r in mos_results:
+        if not r.is_safe:
+            issues.append(f"{r.inci_name}: MoS {r.mos} < 100 — реформулирай (Част Б).")
+    return issues
+
+
+def compute_from_yaml(yaml_text: str, include_cpsr: bool = False) -> ComputeResult:
+    """Продуктов YAML → таблица + INCI + алергени + аларми (детерминистично).
+
+    Връща `ComputeResult` (типизиран контракт от енджина, Finding R1). Алармите
+    в `warnings` са структурирани `EngineWarning` (носят .severity/.code, R5);
+    `blockers` са твърдите спирачки за подписване (R6).
+    """
     doc = yaml.safe_load(yaml_text)
     product, warnings = build_product(doc)
     totals = consolidated_concentrations(product)
     table = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
     total = sum(totals.values())
-    result = {
+    result: ComputeResult = {
         "name": product.name,
         "product_type": product.product_type.value,
         "warnings": warnings,
@@ -247,6 +283,7 @@ def compute_from_yaml(yaml_text: str, include_cpsr: bool = False) -> dict:
         "inci": generate_inci(product),
         "declared": allergens_to_declare(product),
         "allergens": allergen_table(product),
+        "blockers": _hard_blockers(product),
     }
     if include_cpsr:
         result["cpsr"] = generate_cpsr(product)

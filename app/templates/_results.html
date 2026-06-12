@@ -7,15 +7,42 @@
 
   <h3>{{ r.name }} <span class="badge">{{ r.product_type }}</span></h3>
 
-  {% set alarm_count = (r.warnings|length) + (0 if r.sum_ok else 1) %}
+  {# R5/R6 — разделяме по машинно-четима тежест (EngineWarning.severity):
+     info = бележка (НЕ заключва изходите); warning = аларма (отхвърля се с
+     потвърждение); blocker = твърда спирачка (НЕ се отхвърля). #}
+  {% set blockers = r.blockers or [] %}
+  {% set has_blocker = blockers|length > 0 %}
+  {% set warn_items = r.warnings | rejectattr('severity', 'equalto', 'info') | list %}
+  {% set info_items = r.warnings | selectattr('severity', 'equalto', 'info') | list %}
+  {% set sum_alarm_present = r.warnings | selectattr('code', 'equalto', 'SUM_NOT_100') | list | length > 0 %}
+  {% set ack_display = warn_items|length + (1 if (not r.sum_ok) and not sum_alarm_present else 0) %}
+  {% set needs_ack = ack_display > 0 %}
+  {% set gated_hidden = has_blocker or needs_ack %}
 
-  {% if r.warnings %}
+  {% if has_blocker %}
+  <div class="alarms blocker" role="alert">
+    <strong>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      ⛔ Блокери — изходите остават скрити и НЕ подлежат на потвърждение
+    </strong>
+    <ul>{% for b in blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if warn_items %}
   <div class="alarms" role="alert">
     <strong>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
-      Аларми и бележки от проверката
+      Аларми от проверката
     </strong>
-    <ul>{% for w in r.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    <ul>{% for w in warn_items %}<li>{{ w }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if info_items %}
+  <div class="alarms info" role="note">
+    <strong>Бележки (информативни — не заключват изходите)</strong>
+    <ul>{% for w in info_items %}<li>{{ w }}</li>{% endfor %}</ul>
   </div>
   {% endif %}
 
@@ -75,16 +102,22 @@
     (0,001% за остава-върху / 0,01% за отмива-се).</p>
   </details>
 
-  {% if alarm_count %}
+  {% if has_blocker %}
+  <div class="gate-note blocked" role="alert" data-has-blocker>
+    <strong>Изходните данни (INCI и CPSR) са скрити заради блокери.</strong>
+    Блокерите по-горе НЕ могат да се потвърдят — отстрани причината (липсваща
+    документация, превишен лимит или MoS&nbsp;&lt;&nbsp;100), за да се покажат изходите.
+  </div>
+  {% elif needs_ack %}
   <div class="gate-note" role="alert">
     <strong>Изходните данни (INCI и CPSR) са скрити.</strong>
-    Има {{ alarm_count }} аларм(и) по-горе — потвърди, че си ги прегледал(а), за да продължиш.
+    Има {{ ack_display }} аларм(и) по-горе — потвърди, че си ги прегледал(а), за да продължиш.
     <button type="button" class="btn-primary small" data-ack-alarms>
-      Потвърждавам {{ alarm_count }} аларм(и) и продължавам
+      Потвърждавам {{ ack_display }} аларм(и) и продължавам
     </button>
   </div>
   {% endif %}
-  <div class="gated"{% if alarm_count %} hidden{% endif %}>
+  <div class="gated"{% if gated_hidden %} hidden{% endif %}>
   <h4>Генериран INCI (Член 19)</h4>
   <div class="inci-head">
     <button type="button" class="btn-ghost small" data-copy="#inci-text"

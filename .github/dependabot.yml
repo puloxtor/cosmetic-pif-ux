@@ -1,0 +1,25 @@
+# Finding G2: одитирано разпространение на промените в енджина.
+#
+# Енджинът е пинован като git зависимост в requirements.txt. Когато проследяваният
+# клон на cosmetic-pif-poc получи нов commit, Dependabot отваря PR с новия SHA.
+# CI (G1) трябва да е зелен И PR-ът да мине човешки review преди merge — НИКОГА
+# автоматичен ъпгрейд на регулаторния енджин под подписано досие.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    # Без auto-merge: пинът се вдига само през зелен, ревюиран PR.
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
+      - "engine-pin"
+
+  # Дръж и самите GitHub Actions актуални.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -75,8 +75,9 @@ ASSET_VERSION = _asset_version()
 GIT_COMMIT = _git_commit()
 ENGINE_PIN = _engine_pin()
 
-from pif_engine.nomenclature import DECLARABLE_ALLERGENS as _DA
-_ALLERGEN_COUNT = len(_DA)
+# Алергенната листа идва ПРЕЗ моста (engine.*), не от пряк pif_engine внос
+# (правило от CLAUDE.md: app/engine.py е единственият мост към енджина).
+_ALLERGEN_COUNT = len(engine.DECLARABLE_ALLERGENS)
 
 _log = logging.getLogger(__name__)
 
@@ -225,6 +226,7 @@ def healthz():
         "engine_version": engine.ENGINE_VERSION,
         "engine_pin": ENGINE_PIN,
         "declarable_allergens": _ALLERGEN_COUNT,
+        "regulatory_refs": engine.REGULATORY_REFS,
         "ux_commit": GIT_COMMIT,
         "asset_version": ASSET_VERSION,
     }

@@ -855,12 +855,15 @@
       return;
     }
 
-    // „Потвърждавам N аларми“ → разкрива скритите изходи (INCI, CPSR)
+    // „Потвърждавам N аларми“ → разкрива скритите изходи (INCI, CPSR).
+    // R6: блокерите НЕ се отхвърлят с потвърждение — ако има блокер, не разкриваме.
     var ack = e.target.closest ? e.target.closest("[data-ack-alarms]") : null;
     if (ack) {
       var res = ack.closest(".result");
-      if (res) { var g = res.querySelector(".gated"); if (g) g.hidden = false; }
-      var note = ack.closest(".gate-note"); if (note) note.hidden = true;
+      if (res && !res.querySelector("[data-has-blocker]")) {
+        var g = res.querySelector(".gated"); if (g) g.hidden = false;
+        var note = ack.closest(".gate-note"); if (note) note.hidden = true;
+      }
       return;
     }
 

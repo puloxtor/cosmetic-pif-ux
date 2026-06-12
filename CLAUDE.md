@@ -119,7 +119,9 @@ curl http://localhost:8000/healthz
 
 ## Известни пропуски и отложена работа
 
-Виж **`../cosmetic-pif-poc/ROADMAP.md`** за списък на:
+Каноничният cross-repo списък (и живото състояние/handoff) е в енджина —
+**[ROADMAP.md](https://github.com/puloxtor/cosmetic-pif-poc/blob/claude/epic-mccarthy-nW68A/ROADMAP.md)**
+(GitHub URL, за да работи и в сесия само с този репо — Finding R7):
 - **Finding E** (BHT от fragrance secondary table) — engine gap, deferred
 - **Finding F** (Safrole prohibited substance flagging) — requires CPSR auto-generation +
   UX warning banner
@@ -127,6 +129,11 @@ curl http://localhost:8000/healthz
 
 Кога UX-ът трябва да се изменя (напр. за Finding F flagging), ROADMAP.md ще го маркира
 **(U)** и ще каже какво точно.
+
+**Контракт с енджина (Findings R1–R6):** `app/engine.py::compute_from_yaml` връща
+типизирания `ComputeResult`; алармите са структурирани (`EngineWarning.severity` →
+info/warning/blocker), а `_results.html` ги гейтва диференцирано (info не заключва;
+blocker не се отхвърля). `/healthz` излага `regulatory_refs`.
 
 ## Правила
 

@@ -84,6 +84,47 @@ def test_alarms_gate_outputs_until_acknowledged():
     assert r.text.index('class="gated"') < r.text.index("Генериран INCI")
 
 
+def test_info_note_does_not_gate_outputs():
+    """ℹ️ информативна бележка (range → горна граница) НЕ заключва изходите (R6)."""
+    formula = (
+        'product:\n  name: "T"\n  product_type: "leave-on"\n'
+        'raw_materials:\n  - name: "Mix"\n    dose_pct: 100\n    composition:\n'
+        '      - { inci_name: "Helianthus Annuus Seed Oil", range: [45, 55] }\n'
+        '      - { inci_name: "Prunus Amygdalus Dulcis Oil", pct: 45 }\n'
+    )
+    r = client.post("/compute", data={"formula": formula})
+    assert r.status_code == 200
+    assert "ℹ️" in r.text                          # бележката се показва…
+    assert "не заключват изходите" in r.text       # …в информативната секция
+    assert "data-ack-alarms" not in r.text         # но НЕ заключва изходите
+    assert 'class="gated" hidden' not in r.text
+
+
+def test_blocker_is_not_acknowledgeable():
+    """Твърд блокер (липсваща CoA) скрива изходите и НЕ дава бутон за потвърждение (R6)."""
+    formula = (
+        'product:\n  name: "T"\n  product_type: "leave-on"\n'
+        'raw_materials:\n  - name: "Almond"\n    dose_pct: 100\n    has_coa: false\n'
+        '    composition:\n'
+        '      - { inci_name: "Prunus Amygdalus Dulcis Oil", pct: 100 }\n'
+    )
+    r = client.post("/compute", data={"formula": formula})
+    assert r.status_code == 200
+    assert "Блокери" in r.text                      # блокерният банер
+    assert "data-has-blocker" in r.text
+    assert 'class="gated" hidden' in r.text         # изходите са скрити
+    assert "data-ack-alarms" not in r.text         # и НЕ могат да се потвърдят
+
+
+def test_healthz_has_regulatory_refs():
+    """/healthz излага картата правило→цитат през моста (R4)."""
+    r = client.get("/healthz")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("regulatory_refs")
+    assert "ALLERGEN_THRESHOLD" in data["regulatory_refs"]
+
+
 def test_extract_rejects_disallowed_extension():
     r = client.post("/extract", data={"type": "auto", "ocr": "never"},
                     files={"files": ("evil.exe", b"MZ", "application/octet-stream")})
@@ -409,12 +450,15 @@ def test_extract_route_rate_limit_shows_friendly_hint(monkeypatch):
 
 
 def test_engine_pin_has_required_fixes():
-    """Пинът трябва да сочи енджин с Haiku по подразбиране + boilerplate филтър.
+    """Пинът сочи енджин с ВАЛИДЕН vision модел + boilerplate филтър (G1).
 
-    Спира деплой със стар пин (напр. Opus по подразбиране → 429), виж screenshot.
+    НЕ фиксираме конкретно семейство (Haiku/Opus) — то се сменя и 429 се покрива
+    от ретраи в енджина. Фиксираме само, че моделът е валиден Anthropic id и че
+    филтърът съществува, за да не дрейфа пинът тихо.
     """
+    import re
     from pif_engine.extraction.vision import DEFAULT_MODEL
-    assert "haiku" in DEFAULT_MODEL.lower()        # не Opus по подразбиране
+    assert isinstance(DEFAULT_MODEL, str) and re.match(r"^claude-", DEFAULT_MODEL), DEFAULT_MODEL
     import importlib
     assert importlib.import_module("pif_engine.extraction.filter")  # филтърът е в енджина
 
